@@ -1,7 +1,6 @@
 #pragma once
 
 #include "AP_DDS_config.h"
-
 #if AP_DDS_ENABLED
 
 #include "uxr/client/client.h"
@@ -25,7 +24,7 @@
 #if AP_DDS_IMU_PUB_ENABLED
 #include "sensor_msgs/msg/Imu.h"
 #endif // AP_DDS_IMU_PUB_ENABLED
-#if AP_DDS_JOY_SUB_ENABLED
+#if AP_DDS_JOY_SUB_ENABLED || AP_DDS_RC_PUB_ENABLED
 #include "sensor_msgs/msg/Joy.h"
 #endif // AP_DDS_JOY_SUB_ENABLED
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
@@ -91,6 +90,8 @@ private:
     uxrStreamId reliable_in;
     uxrStreamId reliable_out;
 
+    static char* replace_substring(const char* input, const char* from, const char* to);
+
     // Outgoing Sensor and AHRS data
 
 #if AP_DDS_TIME_PUB_ENABLED
@@ -119,6 +120,15 @@ private:
     void write_geo_pose_topic();
     static void update_topic(geographic_msgs_msg_GeoPoseStamped& msg);
 #endif // AP_DDS_GEOPOSE_PUB_ENABLED
+
+#if AP_DDS_RC_PUB_ENABLED
+    sensor_msgs_msg_Joy rc_topic;
+    // The last ms rc AP_DDS wrote a GeoPose message
+    uint64_t last_rc_time_ms;
+    //! @brief Serialize the current rc and publish to the IO stream(s)
+    void write_rc_topic();
+    static void update_topic(sensor_msgs_msg_Joy& msg);
+#endif // AP_DDS_RC_PUB_ENABLED
 
 #if AP_DDS_LOCAL_POSE_PUB_ENABLED
     geometry_msgs_msg_PoseStamped local_pose_topic;
@@ -307,6 +317,9 @@ public:
 
     //! @brief Maximum number of attempts to ping the XRCE agent before exiting
     AP_Int8 ping_max_retry;
+
+    //! @brief Suffix for the node namespace
+    AP_Int8 node_namespace_suffix;
 
     //! @brief Enum used to mark a topic as a data reader or writer
     enum class Topic_rw : uint8_t {

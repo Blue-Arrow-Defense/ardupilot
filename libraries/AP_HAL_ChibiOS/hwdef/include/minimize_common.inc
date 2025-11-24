@@ -80,7 +80,7 @@ define AP_BARO_PROBE_EXTERNAL_I2C_BUSES 0
 define HAL_BARO_WIND_COMP_ENABLED 0
 
 # no mounts:
-define HAL_MOUNT_ENABLED 0
+#define HAL_MOUNT_ENABLED 0
 
 # no generator:
 define HAL_GENERATOR_ENABLED 0
@@ -97,7 +97,7 @@ define AP_INERTIALSENSOR_KILL_IMU_ENABLED 0
 # shortened names in @SYS/taskinfo.txt
 define AP_SCHEDULER_EXTENDED_TASKINFO_ENABLED 0
 
-define AP_LANDINGGEAR_ENABLED APM_BUILD_COPTER_OR_HELI
+#define AP_LANDINGGEAR_ENABLED APM_BUILD_COPTER_OR_HELI
 
 # Plane-specific defines; these defines are only used in the Plane
 #  directory, but are seen across the entire codebase:

@@ -1,8 +1,10 @@
 #include <AP_HAL/AP_HAL_Boards.h>
 
 #include "AP_DDS_config.h"
+
 #if AP_DDS_ENABLED
 #include <uxr/client/util/ping.h>
+#include <string.h>
 
 #include <AP_GPS/AP_GPS.h>
 #include <AP_HAL/AP_HAL.h>
@@ -67,6 +69,9 @@ static constexpr uint16_t DELAY_AIRSPEED_TOPIC_MS = AP_DDS_DELAY_AIRSPEED_TOPIC_
 #if AP_DDS_GEOPOSE_PUB_ENABLED
 static constexpr uint16_t DELAY_GEO_POSE_TOPIC_MS = AP_DDS_DELAY_GEO_POSE_TOPIC_MS;
 #endif // AP_DDS_GEOPOSE_PUB_ENABLED
+#if AP_DDS_RC_PUB_ENABLED
+static constexpr uint16_t DELAY_RC_TOPIC_MS = AP_DDS_DELAY_RC_TOPIC_MS;
+#endif // AP_DDS_RC_PUB_ENABLED
 #if AP_DDS_CLOCK_PUB_ENABLED
 static constexpr uint16_t DELAY_CLOCK_TOPIC_MS =AP_DDS_DELAY_CLOCK_TOPIC_MS;
 #endif // AP_DDS_CLOCK_PUB_ENABLED
@@ -151,6 +156,15 @@ const AP_Param::GroupInfo AP_DDS_Client::var_info[] {
     // @Increment: 1
     // @User: Standard
     AP_GROUPINFO("_MAX_RETRY", 6, AP_DDS_Client, ping_max_retry, 10),
+
+    // @Param: _NAMESPACE_SUFFIX
+    // @DisplayName: DDS namespace suffix
+    // @Description: Suffix for the node namespace. This is used to differentiate between multiple inst of the same node type in the same DDS domain.
+    // @Range: 0 100
+    // @RebootRequired: True
+    // @Increment: 1
+    // @User: Standard
+    AP_GROUPINFO("_SUFFIX", 7, AP_DDS_Client, node_namespace_suffix, 1),
 
     AP_GROUPEND
 };
@@ -555,6 +569,22 @@ void AP_DDS_Client::update_topic(geographic_msgs_msg_GeoPoseStamped& msg)
     }
 }
 #endif // AP_DDS_GEOPOSE_PUB_ENABLED
+
+#if AP_DDS_RC_PUB_ENABLED
+void AP_DDS_Client::update_topic(sensor_msgs_msg_Joy& msg)
+{
+    update_topic(msg.header.stamp);
+    STRCPY(msg.header.frame_id, BASE_LINK_NED_FRAME_ID);
+
+    msg.axes_size = rc().get_valid_channel_count();
+    msg.buttons_size = 0;
+
+    for (uint32_t i = 0; i < msg.axes_size; i++) {
+        RC_Channel* channel = rc().channel(i);
+        msg.axes[i] = channel->get_radio_in();
+    }
+}
+#endif // AP_DDS_RC_PUB_ENABLED
 
 #if AP_DDS_IMU_PUB_ENABLED
 void AP_DDS_Client::update_topic(sensor_msgs_msg_Imu& msg)
@@ -1213,6 +1243,46 @@ bool AP_DDS_Client::init_session()
     return true;
 }
 
+char* AP_DDS_Client::replace_substring(const char* input, const char* from, const char* to)
+{
+    if (!input || !from || !to) return NULL;
+    size_t input_len = strlen(input);
+    size_t from_len = strlen(from);
+    size_t to_len = strlen(to);
+
+    // Quick exit if 'from' is empty
+    if (from_len == 0) return strdup(input);
+
+    // First pass: count how many times 'from' appears in 'input'
+    size_t count = 0;
+    const char* pos = input;
+    while ((pos = strstr(pos, from)) != NULL) {
+        count++;
+        pos += from_len;
+    }
+
+    // Compute length of result string
+    size_t result_len = input_len + (to_len - from_len) * count;
+    char* result = (char*)malloc(result_len + 1); // +1 for null terminator
+    if (!result) return NULL;
+
+    // Second pass: build the result string
+    const char* current = input;
+    char* dest = result;
+    while ((pos = strstr(current, from)) != NULL) {
+        size_t segment_len = pos - current;
+        memcpy(dest, current, segment_len);
+        dest += segment_len;
+        memcpy(dest, to, to_len);
+        dest += to_len;
+        current = pos + from_len;
+    }
+    // Copy remaining part
+    strcpy(dest, current);
+
+    return result;
+}
+
 bool AP_DDS_Client::create()
 {
     WITH_SEMAPHORE(csem);
@@ -1222,7 +1292,9 @@ bool AP_DDS_Client::create()
         .id = 0x01,
         .type = UXR_PARTICIPANT_ID
     };
-    const char* participant_name = AP_DDS_PARTICIPANT_NAME;
+    char prefix[6];
+    hal.util->snprintf(prefix, sizeof(prefix), "ap%d", static_cast<int>(node_namespace_suffix));
+    const char* participant_name = prefix;
     const auto participant_req_id = uxr_buffer_create_participant_bin(&session, reliable_out, participant_id,
                                     static_cast<uint16_t>(domain_id), participant_name, UXR_REPLACE);
 
@@ -1230,7 +1302,7 @@ bool AP_DDS_Client::create()
     constexpr uint8_t nRequestsParticipant = 1;
     const uint16_t requestsParticipant[nRequestsParticipant] = {participant_req_id};
 
-    constexpr uint16_t maxTimeMsPerRequestMs = 500;
+    constexpr uint16_t maxTimeMsPerRequestMs = 10000;
     constexpr uint16_t requestTimeoutParticipantMs = (uint16_t) nRequestsParticipant * maxTimeMsPerRequestMs;
     uint8_t statusParticipant[nRequestsParticipant];
     if (!uxr_run_session_until_all_status(&session, requestTimeoutParticipantMs, requestsParticipant, statusParticipant, nRequestsParticipant)) {
@@ -1246,7 +1318,7 @@ bool AP_DDS_Client::create()
             .type = UXR_TOPIC_ID
         };
         const auto topic_req_id = uxr_buffer_create_topic_bin(&session, reliable_out, topic_id,
-                                  participant_id, topics[i].topic_name, topics[i].type_name, UXR_REPLACE);
+                                  participant_id, replace_substring(topics[i].topic_name, "ap", prefix), topics[i].type_name, UXR_REPLACE);
 
         // Status requests
         constexpr uint8_t nRequests = 3;
@@ -1326,8 +1398,8 @@ bool AP_DDS_Client::create()
                 .type = UXR_REPLIER_ID
             };
             const auto replier_req_id = uxr_buffer_create_replier_bin(&session, reliable_out, rep_id,
-                                        participant_id, services[i].service_name, services[i].request_type, services[i].reply_type,
-                                        services[i].request_topic_name, services[i].reply_topic_name, services[i].qos, UXR_REPLACE);
+                                        participant_id, replace_substring(services[i].service_name, "ap", prefix), services[i].request_type, services[i].reply_type,
+                                        replace_substring(services[i].request_topic_name, "ap", prefix), replace_substring(services[i].reply_topic_name, "ap", prefix), services[i].qos, UXR_REPLACE);
 
             uint16_t request = replier_req_id;
             uint8_t status;
@@ -1499,6 +1571,23 @@ void AP_DDS_Client::write_geo_pose_topic()
 }
 #endif // AP_DDS_GEOPOSE_PUB_ENABLED
 
+#if AP_DDS_RC_PUB_ENABLED
+void AP_DDS_Client::write_rc_topic()
+{
+    WITH_SEMAPHORE(csem);
+    if (connected) {
+        ucdrBuffer ub {};
+        const uint32_t topic_size = sensor_msgs_msg_Joy_size_of_topic(&rc_topic, 0);
+        uxr_prepare_output_stream(&session, reliable_out, topics[to_underlying(TopicIndex::RC_PUB)].dw_id, &ub, topic_size);
+        const bool success = sensor_msgs_msg_Joy_serialize_topic(&ub, &rc_topic);
+        if (!success) {
+            // TODO sometimes serialization fails on bootup. Determine why.
+            // AP_HAL::panic("FATAL: DDS_Client failed to serialize\n");
+        }
+    }
+}
+#endif // AP_DDS_RC_PUB_ENABLED
+
 #if AP_DDS_CLOCK_PUB_ENABLED
 void AP_DDS_Client::write_clock_topic()
 {
@@ -1597,6 +1686,13 @@ void AP_DDS_Client::update()
         write_geo_pose_topic();
     }
 #endif // AP_DDS_GEOPOSE_PUB_ENABLED
+#if AP_DDS_RC_PUB_ENABLED
+    if (cur_time_ms - last_rc_time_ms > DELAY_RC_TOPIC_MS) {
+        update_topic(rc_topic);
+        last_rc_time_ms = cur_time_ms;
+        write_rc_topic();
+    }
+#endif // AP_DDS_RC_PUB_ENABLED
 #if AP_DDS_CLOCK_PUB_ENABLED
     if (cur_time_ms - last_clock_time_ms > DELAY_CLOCK_TOPIC_MS) {
         update_topic(clock_topic);

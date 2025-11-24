@@ -150,7 +150,8 @@ extra_defaults.flush()
 configure_args = ["./waf", "configure",
                   "--board=%s" % args.board,
                   "--extra-hwdef=%s" % extra_hwdef.name,
-                  "--default-param=%s" % extra_defaults.name]
+                  "--default-param=%s" % extra_defaults.name,
+                  "-v"]
 configure_args.extend(unknown_args)
 run_program(configure_args)
 

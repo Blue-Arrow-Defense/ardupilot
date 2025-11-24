@@ -3,7 +3,6 @@
 #include <AP_SerialManager/AP_SerialManager.h>
 
 #include <errno.h>
-
 /*
   open connection on a serial port
  */
