@@ -267,29 +267,12 @@ define OSD_ENABLED 1
 define HAL_OSD_TYPE_DEFAULT 1
 ROMFS_WILDCARD libraries/AP_OSD/fonts/font*.bin
 
-#-----------------------------HITL---------------------------------
-
-#define AP_SCRIPTING_ENABLED 0
-#define HAL_QUADPLANE_ENABLED 0
-#define HAL_ENABLE_DRONECAN_DRIVERS 0
-#define AP_RANGEFINDER_ENABLED 0
-#define HAL_LOGGING_ENABLED 0
-#define OSD_ENABLED 0
-#define HAL_WITH_MSP_DISPLAYPORT 0
-#
-#define HAL_EXTERNAL_AHRS_ENABLED 0
-#define AP_BARO_PROBE_EXTERNAL_I2C_BUSES 0
-#define AP_FRSKY_TELEM_ENABLED 0
-#define AP_FRSKY_SPORT_TELEM_ENABLED 0
-#define AP_FRSKY_SPORT_PASSTHROUGH_ENABLED 0
-#define HAL_SOLO_GIMBAL_ENABLED 0
+#-----------------------------HITL-------------------------------------
 
 include ../include/SimOnHW.inc
-include ../include/minimize_common.inc
 
 
-
-#-----------------------------DMA---------------------------------
+#-----------------------------DMA-------------------------------------
 
 DMA_PRIORITY S*
 

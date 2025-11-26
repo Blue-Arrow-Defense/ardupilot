@@ -576,7 +576,7 @@ void AP_DDS_Client::update_topic(sensor_msgs_msg_Joy& msg)
     update_topic(msg.header.stamp);
     STRCPY(msg.header.frame_id, BASE_LINK_NED_FRAME_ID);
 
-    msg.axes_size = rc().get_valid_channel_count();
+    msg.axes_size = 8;
     msg.buttons_size = 0;
 
     for (uint32_t i = 0; i < msg.axes_size; i++) {
