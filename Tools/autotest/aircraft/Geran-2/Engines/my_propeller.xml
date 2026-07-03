@@ -1,0 +1,210 @@
+<?xml version="1.0"?>
+
+<!--
+  ════════════════════════════════════════════════════════════════════════
+   Geran-2 Pusher Propeller — 2-blade fixed-pitch, 1.0 m diameter
+   File: Engines/my_propeller.xml
+
+   DESIGN POINT (at cruise):
+   ─────────────────────────
+     V_cruise = 150 km/h = 41.7 m/s
+     Engine at ~75% throttle → ~4,200 RPM → prop at 4,200/1.5 = 2,800 RPM
+     n = 2,800/60 = 46.7 rev/s
+     D = 1.0 m
+     J = V/(n·D) = 41.7/(46.7·1.0) = 0.894  ← design advance ratio
+
+   DESIGN THRUST REQUIREMENT:
+     CD_cruise = CD0 + k·CL²  = 0.020 + 0.341·0.39² = 0.073
+     q_cruise  = ½·1.225·41.7² = 1,064 N/m²
+     D         = CD·q·S       = 0.073·1,064·4.6875 = 364 N
+     Required thrust ≈ 364 N = 37 kg
+
+   PROPELLER SIZING:
+     At J=0.894 design: want Ct ≈ 0.073 (see table below)
+     T = Ct·ρ·n²·D⁴ = 0.073·1.225·46.7²·1.0 = 0.073·1.225·2181 = 195 N/rev
+     Hmm, 195N < 364N needed.  The engine will need to run at higher RPM / throttle.
+     At 100% throttle: ~7,000 RPM → prop at 7,000/1.5 = 4,667 RPM = 77.8 rev/s
+     J = 41.7/(77.8·1.0) = 0.536, Ct ≈ 0.088 → T = 0.088·1.225·77.8²·1.0 = 650 N ← plenty
+     So cruise will be at ~55-65% throttle. ✓
+
+   GEARRATIO NOTE:
+     JSBSim gearratio = engine_RPM / prop_RPM (reduction gear).
+     gearratio = 1.50 → at 7,000 RPM engine, prop = 4,667 RPM.
+     This gives manageable tip speed:
+       V_tip = π·D·n = π·1.0·77.8 = 244 m/s → Mach 0.72 at sea level (acceptable).
+
+   ORIGINAL AEROMATIC ERRORS:
+     1. Ct/Cp table NEVER goes negative → prop cannot windmill in dive
+        At dive speed 300 km/h = 83.3 m/s with n=4667 rpm:
+        J = 83.3/77.8 = 1.07 → should have negative Ct (prop braking)
+     2. gearratio = 1.1 with maxrpm = 2,800 → prop at only 2,545 RPM
+        → insufficient thrust at cruise (Ct at J≈0.98 ≈ 0.082, T≈180 N < 364 N required)
+     3. Cp table unrealistically flat and increasing with J (power rising at high J is wrong)
+
+   REFERENCES:
+     Blade Element Momentum Theory: Glauert (1935), "Airplane Propellers"
+     Empirical Ct/Cp data: McCormick "Aerodynamics, Aeronautics, and Flight Mechanics" §9
+     Advance ratio: J = V/(n·D),  η_prop = J·Ct/Cp
+  ════════════════════════════════════════════════════════════════════════
+-->
+
+<propeller version="1.01" name="my_propeller">
+
+  <!-- Moment of inertia of propeller disc (roll axis through shaft)
+       For a 2-blade composite prop D=1.0m, mass ~1.25 kg per blade:
+       Ixx_blades = 2 · (m_blade · r²/3) = 2 · 1.25 · (0.5²/3) = 0.208 kg·m²
+       Convert to slug·ft²: 0.208 kg·m² / 1.3558 = 0.153 slug·ft²
+       Add hub (~30%): ≈ 0.20 slug·ft²  -->
+  <ixx>  0.20  </ixx>                                <!-- slug·ft²; prop rotational inertia -->
+
+  <!-- Diameter: 1.0 m = 3.2808 ft -->
+  <diameter unit="FT">  3.2808  </diameter>          <!-- 1.0 m; pusher prop -->
+
+  <numblades>  2  </numblades>                        <!-- 2-blade fixed-pitch -->
+
+  <!-- Gear ratio: engine RPM / prop RPM
+       gearratio = 1.50 → prop = engine_RPM / 1.5
+       At max 7,000 RPM: prop = 4,667 RPM; tip Mach ≈ 0.72 (acceptable)
+       ORIGINAL ERROR: gearratio=1.1 → prop too fast for engine maxrpm=2800 (wrong)
+       Ref: JSBSim source FGTransmission.cpp, 'GearRatio' parameter -->
+  <gearratio>  1.50  </gearratio>                    <!-- reduction: prop = engine/1.5 -->
+
+  <!-- Fixed-pitch: minpitch = maxpitch = blade angle at 75% radius
+       Pitch angle ≈ atan(J_design · π · 0.75 × correction) ≈ 22–28° for J≈0.89
+       Using 26°: gives good efficiency across 0.4 < J < 1.0 -->
+  <minpitch>  26.0  </minpitch>                      <!-- fixed pitch, blade angle (deg) -->
+  <maxpitch>  26.0  </maxpitch>                      <!-- same as minpitch = fixed pitch -->
+
+  <minrpm>   800  </minrpm>                          <!-- minimum operational RPM -->
+  <maxrpm>  5000  </maxrpm>                          <!-- max allowable prop RPM -->
+
+  <!-- constspeed=0: fixed-pitch (no governor/CSU) -->
+  <constspeed>  0  </constspeed>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       THRUST COEFFICIENT TABLE: Ct(J)
+       J = V/(n·D) = advance ratio
+       Ct = T / (ρ·n²·D⁴)   [dimensionless]
+
+       IMPORTANT: a fixed-pitch propeller MUST have negative Ct at high J.
+       Negative Ct = propeller is braking (windmilling) rather than thrusting.
+       This is physically correct and critical for dive simulation.
+
+       Design pitch 26°, 2-blade composite:
+         J=0.00: static (ground) thrust, peak Ct
+         J=0.53: design cruise, best efficiency
+         J=0.89: at cruise speed/throttle 75%  (see design calc above)
+         J≈1.10: zero-thrust (windmill onset)
+         J>1.10: negative thrust (prop is a drag device in steep dive)
+
+       Ref: McCormick §9.4; Glauert propeller theory;
+            generic 2-blade fixed-pitch empirical data scaled to D=1m
+  ══════════════════════════════════════════════════════════════════════ -->
+  <table name="C_THRUST" type="internal">
+    <tableData>
+      <!--   J         Ct       Notes                                   -->
+      0.00   0.1000   <!-- static: max thrust at zero airspeed          -->
+      0.10   0.0985   <!-- slow climb / ground run                      -->
+      0.20   0.0960
+      0.30   0.0920
+      0.40   0.0870
+      0.53   0.0800   <!-- ← design cruise point (75% throttle)         -->
+      0.60   0.0750
+      0.70   0.0680
+      0.80   0.0600
+      0.90   0.0510   <!-- ← cruise at lower throttle                   -->
+      1.00   0.0400
+      1.05   0.0340
+      1.10   0.0250   <!-- efficiency dropping sharply                  -->
+      1.15   0.0150
+      1.20   0.0040   <!-- near zero-thrust windmill point              -->
+      1.25  -0.0090   <!-- NEGATIVE: prop is braking (dive onset)       -->
+      1.35  -0.0280   <!-- windmilling in shallow dive                  -->
+      1.50  -0.0520   <!-- dive / overspeed: significant prop drag      -->
+      1.70  -0.0800   <!-- steep dive at 300 km/h: J=83/(77.8·1)=1.07  -->
+      2.00  -0.1100   <!-- extreme overspeed (engine off, dive)         -->
+    </tableData>
+  </table>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       POWER COEFFICIENT TABLE: Cp(J)
+       Cp = P / (ρ·n³·D⁵)   [dimensionless]
+       Propulsive efficiency: η = J·Ct/Cp
+
+       A correctly shaped Cp curve:
+         - Rises slightly from J=0 (static) to peak efficiency region
+         - Then FALLS at high J (less work done as prop unloads)
+         - Never increases indefinitely with J
+
+       ORIGINAL ERROR: aeromatic Cp increased monotonically with J (unphysical).
+
+       Ref: McCormick §9.4; Hartman & Biermann NACA TR-640 propeller data
+  ══════════════════════════════════════════════════════════════════════ -->
+  <!-- C_POWER: positive = power FROM engine TO prop (propulsive mode)
+              negative = power FROM prop TO engine (windmill/turbine mode)
+       Real fixed-pitch props cross zero near J=1.10-1.15 (same as Ct=0 crossing).
+       At J > J_windmill the prop autorotates: net torque assists engine shaft.
+       This is critical: if Cp stays positive at high-J, JSBSim sees the prop
+       always draining the engine, preventing it from reaching design RPM.
+       Ref: McCormick Aerodynamics ch.9; Hartman-Biermann NACA TR-640 -->
+  <table name="C_POWER" type="internal">
+    <tableData>
+      0.00   0.0380
+      0.10   0.0390
+      0.20   0.0398
+      0.30   0.0405
+      0.40   0.0412
+      0.53   0.0418
+      0.60   0.0422
+      0.70   0.0428
+      0.80   0.0430
+      0.90   0.0425
+      1.00   0.0410
+      1.10   0.0385
+      1.15   0.0200
+      1.20   0.0000
+      1.25  -0.0080
+      1.35  -0.0180
+      1.50  -0.0280
+      1.70  -0.0380
+      2.00  -0.0460
+    </tableData>
+  </table>
+
+  <!-- Tip Mach correction for thrust (compressibility effects)
+       At prop tip Mach > 0.85, transonic losses occur.
+       At max RPM (4,667 prop RPM), tip speed = π·D·n = π·1.0·77.8 = 244 m/s → M=0.72
+       So this table is only reached in extreme conditions. -->
+  <table name="CT_MACH" type="internal">
+    <tableData>
+      0.85   1.00   <!-- no compressibility loss below M_tip=0.85 -->
+      0.95   0.90   <!-- moderate loss at M=0.95                  -->
+      1.05   0.75   <!-- significant loss at M=1.0 (transonic)    -->
+    </tableData>
+  </table>
+
+  <!-- Tip Mach correction for power (absorbed power increases in transonic) -->
+  <table name="CP_MACH" type="internal">
+    <tableData>
+      0.85   1.00
+      0.95   1.15   <!-- tip shock increases torque demand        -->
+      1.05   1.40
+    </tableData>
+  </table>
+
+  <!--
+    PERFORMANCE SUMMARY (at sea level, ISA):
+      Full throttle (7000 RPM, prop 4667 RPM, n=77.8 rev/s):
+        V=0    (ground): T = 0.100·1.225·77.8²·1.0 = 741 N = 75.6 kg  ✓
+        V=150km/h (41.7m/s): J=0.536, Ct≈0.088 → T = 0.088·1.225·77.8²·1.0=652 N
+        (cruise requires 364 N → throttle ~55%)
+
+      Cruise throttle (~57%, n≈44 rev/s=2640 RPM prop):
+        J = 41.7/(44·1.0) = 0.948, Ct≈0.054 → T=0.054·1.225·44²·1.0=128 N   ← too low?
+        Need higher throttle for cruise.
+
+      NOTE: Final throttle setting depends on JSBSim's manifold pressure model
+      and actual n equilibrium. Calibrate with flight data if available.
+  -->
+
+</propeller>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Geran-2 Cruise Engine Test — JSBSim Run Script
+  ================================================
+  Tests engine bootstrap and cruise power without any catapult force.
+  Aircraft starts at cruise speed (81 kts) and altitude (3,000 ft).
+  Engine is started via the electric starter, then runs freely.
+
+  This script is used by the acceptance test (launch_catapult.py - -mode air)
+  and for standalone engine calibration runs.
+
+  Sequence:
+    t =  0.0 s   Engine start: magneto ON, throttle 80%, starter ON
+    t =  5.0 s   Starter off — engine self-sustains at ~3,200 RPM
+    t =  5–30 s  Free flight at throttle 80%
+
+  Expected results at t=5.5 s (acceptance test):
+    Engine RPM   : 2,500 – 7,000  (engine running)
+    Propeller RPM: 1,500 – 5,000
+    Gear ratio   : 1.45 – 1.55    (= 1.50 gearbox)
+
+  IC: cruise_init.xml (V=81 kts, alt=3,000 ft)
+  To create cruise_init.xml, add to aircraft/Geran-2/:
+    <initialize name="cruise">
+      <ubody unit="KTS"> 81.0 </ubody>
+      <altitude unit="FT"> 3000 </altitude>
+      <running> -1 </running>
+    </initialize>
+
+  Usage:
+    python3 launch_catapult.py - -root /path/to/jtest - -mode air
+-->
+<runscript xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           name="Geran-2 cruise engine test">
+
+  <use aircraft="Geran-2" initialize="cruise_init"/>
+
+  <run start="0.0" end="30.0" dt="0.008333">
+
+    <!-- ── t=0: engine start at cruise conditions ── -->
+    <event name="Engine Start" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 0.0 </condition>
+      <notify/>
+      <set name="propulsion/magneto_cmd"           value="3"   action="FG_SET"/>
+      <set name="fcs/throttle-cmd-norm[0]"         value="0.8" action="FG_SET"/>
+      <set name="propulsion/starter_cmd"            value="1"   action="FG_SET"/>
+      <set name="propulsion/engine/set-running"     value="1"   action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5: starter off ── -->
+    <event name="Starter Off" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.0 </condition>
+      <notify/>
+      <set name="propulsion/starter_cmd" value="0" action="FG_SET"/>
+    </event>
+
+  </run>
+</runscript>

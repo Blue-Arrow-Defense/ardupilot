@@ -702,6 +702,41 @@ AP_AHRS_DCM::drift_correction(float deltat)
     // set _accel_ef_blended based on filtered accel
     _accel_ef = _dcm_matrix * _ins.get_accel();
 
+    // Detect a launch acceleration and extend the mitigation window for
+    // as long as the high acceleration continues, plus a grace period
+    // afterwards (see the omega_P suppression further down for why).
+    //
+    // This has to run here, unconditionally on every call to
+    // drift_correction() (i.e. every AHRS loop tick), NOT further down
+    // inside the GPS-fix-gated section of this function. Confirmed
+    // directly (by instrumenting a real catapult launch with
+    // GCS_SEND_TEXT) that a fast/high-thrust catapult's ~0.35s/7g
+    // spike routinely comes and goes entirely *between* new GPS fixes
+    // (GPS updates around 5-10Hz here) - checking accel only when a
+    // new GPS fix has just arrived means the one or two samples where
+    // accel.x actually exceeds 7 are very often missed, because at
+    // that exact instant this function is still hitting the "no new
+    // GPS fix yet" early return below and never reaches this far.
+    //
+    // Similarly, the original mitigation's entry condition additionally
+    // required "pitch within +/-30 degrees" and "ground_speed() < 3
+    // m/s" - both dropped here. The pitch bound is self-defeating for
+    // exactly the failure this is meant to catch: by the time a call
+    // does land on a fresh GPS fix, the very attitude error this is
+    // supposed to prevent can already have pushed pitch outside that
+    // window, permanently locking the mitigation out. The ground-speed
+    // check has the same GPS-cadence problem as above - a fast
+    // catapult can cross 3 m/s in ~40ms, faster than GPS can ever
+    // sample it. Triggering on sustained high acceleration alone is
+    // still tightly scoped in practice: normal flight (including
+    // aggressive maneuvering) does not sustain 7 m/s^2 of forward
+    // specific force for any meaningful duration.
+    const uint32_t now_ms = AP_HAL::millis();
+    const uint32_t launch_accel_grace_ms = 500;
+    if (AP::ahrs().get_fly_forward() && _ins.get_accel().x >= 7) {
+        _launch_accel_active_until_ms = now_ms + launch_accel_grace_ms;
+    }
+
     // keep a sum of the deltat values, so we know how much time
     // we have integrated over
     _ra_deltat += deltat;
@@ -940,14 +975,23 @@ AP_AHRS_DCM::drift_correction(float deltat)
         _omega_P *= 8;
     }
 
-    if (fly_forward && _gps.status() >= AP_GPS::GPS_OK_FIX_2D &&
-            _gps.ground_speed() < GPS_SPEED_MIN &&
-            _ins.get_accel().x >= 7 &&
-        pitch > radians(-30) && pitch < radians(30)) {
-        // assume we are in a launch acceleration, and reduce the
-        // rp gain by 50% to reduce the impact of GPS lag on
-        // takeoff attitude when using a catapult
-        _omega_P *= 0.5f;
+    // Launch-acceleration detection and latch-setting happens earlier
+    // in this function (right after _accel_ef is computed), so that it
+    // runs on every call regardless of GPS-fix staleness - see the
+    // comment there. Here we just check the resulting deadline.
+    if (_launch_accel_active_until_ms != 0 && AP_HAL::millis() < _launch_accel_active_until_ms) {
+        // assume we are in (or just past) a launch acceleration, and
+        // suppress the accelerometer-based rp correction almost
+        // entirely. Halving it (the original mitigation) was not
+        // enough: even with the deadline-extension above covering the
+        // whole 7g stroke, a 50% reduction still let a 30+ degree
+        // false pitch/roll error build up - halving a wrong
+        // correction just makes it wrong more slowly. Over an event
+        // this short, gyro-only integration (the _omega_I term is
+        // untouched) drifts far less than the GPS-lag-corrupted
+        // accelerometer term does, so it's safe to nearly zero this
+        // out for the event's duration plus grace period.
+        _omega_P *= 0.02f;
     }
 
     // accumulate some integrator error
@@ -1324,6 +1368,13 @@ void AP_AHRS_DCM::send_ekf_status_report(GCS_MAVLINK &link) const
 bool AP_AHRS_DCM::yaw_source_available(void) const
 {
     return AP::compass().use_for_yaw();
+}
+
+// true while DCM's launch-acceleration mitigation is active - see
+// drift_correction() and the comment on the header declaration.
+bool AP_AHRS_DCM::is_launch_accel_active(void) const
+{
+    return _launch_accel_active_until_ms != 0 && AP_HAL::millis() < _launch_accel_active_until_ms;
 }
 
 void AP_AHRS_DCM::get_control_limits(float &ekfGndSpdLimit, float &ekfNavVelGainScaler) const

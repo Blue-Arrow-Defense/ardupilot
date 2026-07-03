@@ -363,6 +363,24 @@ class VehicleInfo(object):
                 "default_params_filename": "default_params/plane-jsbsim.parm",
                 "external": True,
             },
+            # Exact-match entry so `-f jsbsim:Geran-2-catapult` picks up the
+            # Geran-2's own tuning ON TOP of the generic plane-jsbsim base.
+            # options_for_frame() matches an exact frame key before the
+            # generic startswith("jsbsim") fallback, so without this the
+            # command would load ONLY plane-jsbsim.parm (Rascal-tuned:
+            # AIRSPEED_CRUISE 22, ROLL_LIMIT_DEG 65) and the aircraft
+            # crashes on launch. "model" must be set explicitly here (to
+            # the full frame string) so the JSBSim backend still receives
+            # "--model jsbsim:Geran-2-catapult" and loads the Geran-2 model.
+            "jsbsim:Geran-2-catapult": {
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "default_params/plane-jsbsim.parm",
+                    "aircraft/Geran-2/Geran-2-catapult.parm",
+                ],
+                "model": "jsbsim:Geran-2-catapult",
+                "external": True,
+            },
             "scrimmage-plane" : {
                 "waf_target": "bin/arduplane",
                 "default_params_filename": "models/plane.parm",

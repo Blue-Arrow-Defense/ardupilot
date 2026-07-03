@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  ════════════════════════════════════════════════════════════════════════
+   Geran-2 — Flight Control System: Elevon Mixer
+   Systems/Aircraft control.xml
+
+   FLYING WING CONTROL ARCHITECTURE
+   ─────────────────────────────────
+   A flying wing has NO separate elevator, aileron, or rudder.
+   Instead, ELEVONS combine both pitch and roll functions:
+
+     Left elevon  = pitch_cmd + roll_cmd
+     Right elevon = pitch_cmd − roll_cmd
+
+   This mixer decomposes pilot/autopilot commands as follows:
+
+     Pitch channel:  elevator-cmd-norm → fcs/elevator-pos-rad
+                     (symmetric deflection, both elevons move together)
+
+     Roll channel:   aileron-cmd-norm  → fcs/aileron-pos-rad
+                     (differential deflection; aerodynamics reference this
+                      for Cl via Clδa·fcs/aileron-pos-rad)
+
+     Physical elevons (for animation / cross-coupling):
+       fcs/left-elevon-pos-rad  = pitch + roll
+       fcs/right-elevon-pos-rad = pitch − roll
+
+   Yaw control: NO rudder. Yaw authority comes only from:
+     1. Roll → yaw coupling (via roll, then Clr/Cnp)
+     2. Winglet passive stability (Cnβ)
+     ─ This is intentional for this aircraft class.
+
+   ORIGINAL ERROR (aeromatic output):
+     Generated separate elevator / aileron / rudder channels — wrong for
+     a tailless flying wing. The rudder channel also referenced a property
+     name typo ("fcs/rudder-command-sum" vs "fcs/rudder-cmd-norm").
+
+   ════════════════════════════════════════════════════════════════════════
+   Deflection limits (estimated from geometry; replace with measured values):
+     Elevon: ±25° pitch, ±20° roll  (combined limit: ±25°)
+   ════════════════════════════════════════════════════════════════════════
+-->
+
+<system name="Aircraft control">
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       PITCH CHANNEL
+       Input:  fcs/elevator-cmd-norm   (−1 … +1, from autopilot/GCS)
+               fcs/pitch-trim-cmd-norm (−1 … +1, trim offset)
+       Output: fcs/elevator-pos-rad    (−0.436 … +0.436 rad = ±25°)
+               fcs/elevator-pos-norm   (−1 … +1, for display)
+
+       Convention: cmd=+1 (pitch up) → δe=−0.4363 rad (TE UP) → Cm=−0.35·(−0.4363)=+0.153 (nose UP)
+       Inversion required because elevon is AFT of CG: TE down adds aft lift → nose DOWN.
+       So positive pitch-up command must give negative δe (TE up).
+  ══════════════════════════════════════════════════════════════════════ -->
+  <channel name="Pitch">
+
+    <!-- Sum pilot pitch input + pitch trim -->
+    <summer name="Pitch Trim Sum">
+      <input>fcs/elevator-cmd-norm</input>
+      <input>fcs/pitch-trim-cmd-norm</input>
+      <clipto>
+        <min> -1 </min>
+        <max>  1 </max>
+      </clipto>
+      <!-- output is automatically named fcs/pitch-trim-sum -->
+    </summer>
+
+    <!-- Scale normalised command (±1) to physical elevon angle (±25°)
+         ±25° = ±0.4363 rad
+         RANGE IS INVERTED: cmd=+1 → rad=−0.4363 (TE up → nose up for aft elevon)
+         cmd=−1 → rad=+0.4363 (TE down → nose down)
+         Ref: typical elevon authority for flying wing UAVs; NACA TN-3040 -->
+    <aerosurface_scale name="Elevator Control">
+      <input>fcs/pitch-trim-sum</input>
+      <range>
+        <min>  0.4363 </min>   <!-- cmd=−1 → +0.4363 rad (TE down = pitch DOWN) -->
+        <max> -0.4363 </max>   <!-- cmd=+1 → −0.4363 rad (TE up  = pitch UP)   -->
+      </range>
+      <output>fcs/elevator-pos-rad</output>
+    </aerosurface_scale>
+
+    <!-- Normalise output back to ±1 for instrumentation / autopilot feedback -->
+    <aerosurface_scale name="Elevator Normalization">
+      <input>fcs/elevator-pos-rad</input>
+      <domain>
+        <min> -0.4363 </min>
+        <max>  0.4363 </max>
+      </domain>
+      <range>
+        <min> -1 </min>
+        <max>  1 </max>
+      </range>
+      <output>fcs/elevator-pos-norm</output>
+    </aerosurface_scale>
+
+  </channel>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       ROLL CHANNEL
+       Input:  fcs/aileron-cmd-norm    (−1 … +1)
+               fcs/roll-trim-cmd-norm  (−1 … +1)
+       Output: fcs/aileron-pos-rad     (−0.349 … +0.349 rad = ±20°)
+               fcs/aileron-pos-norm    (±1)
+
+       The DIFFERENTIAL signal is stored in fcs/aileron-pos-rad.
+       Aerodynamic roll moment: Cl = Clδa · fcs/aileron-pos-rad
+       Positive δa = left elevon down, right elevon up = roll right
+  ══════════════════════════════════════════════════════════════════════ -->
+  <channel name="Roll">
+
+    <!-- Sum pilot roll input + roll trim -->
+    <summer name="Roll Trim Sum">
+      <input>fcs/aileron-cmd-norm</input>
+      <input>fcs/roll-trim-cmd-norm</input>
+      <clipto>
+        <min> -1 </min>
+        <max>  1 </max>
+      </clipto>
+      <!-- output named fcs/roll-trim-sum -->
+    </summer>
+
+    <!-- Scale to physical differential elevon (±20°)
+         ±20° = ±0.3491 rad
+         This is the PURE roll signal (fcs/aileron-pos-rad).
+         Aerodynamics use this directly for Clδa and Cnδa terms. -->
+    <aerosurface_scale name="Aileron Differential Elevon Control">
+      <input>fcs/roll-trim-sum</input>
+      <range>
+        <min> -0.3491 </min>   <!-- −20° in radians -->
+        <max>  0.3491 </max>   <!--  +20° in radians -->
+      </range>
+      <output>fcs/aileron-pos-rad</output>
+    </aerosurface_scale>
+
+    <!-- Normalise differential command for instrumentation -->
+    <aerosurface_scale name="Aileron Normalization">
+      <input>fcs/aileron-pos-rad</input>
+      <domain>
+        <min> -0.3491 </min>
+        <max>  0.3491 </max>
+      </domain>
+      <range>
+        <min> -1 </min>
+        <max>  1 </max>
+      </range>
+      <output>fcs/aileron-pos-norm</output>
+    </aerosurface_scale>
+
+  </channel>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       ELEVON MIXER
+       Combines pitch and roll channels into physical left/right elevon positions.
+
+         Left elevon  = pitch + roll
+         Right elevon = pitch − roll  (negate roll for right side)
+
+       These outputs are used for:
+         • 3D model animation (visual deflection)
+         • Any aero cross-coupling terms referencing left/right separately
+
+       The aerodynamic model uses fcs/elevator-pos-rad (symmetric pitch)
+       and fcs/aileron-pos-rad (differential roll) SEPARATELY for clarity.
+       Physical positions are bounded to ±25° to prevent mechanical overtravel.
+  ══════════════════════════════════════════════════════════════════════ -->
+  <channel name="Elevon Mixer">
+
+    <!-- ── Left elevon: pitch + roll ────────────────────────────────── -->
+    <summer name="Left Elevon Sum">
+      <input>fcs/elevator-pos-rad</input>   <!-- symmetric pitch contribution -->
+      <input>fcs/aileron-pos-rad</input>    <!-- differential roll contribution -->
+      <clipto>
+        <min> -0.4363 </min>               <!-- hard limit ±25° -->
+        <max>  0.4363 </max>
+      </clipto>
+      <output>fcs/left-elevon-pos-rad</output>
+    </summer>
+
+    <!-- Normalise left elevon for display / autopilot -->
+    <aerosurface_scale name="Left Elevon Normalization">
+      <input>fcs/left-elevon-pos-rad</input>
+      <domain>
+        <min> -0.4363 </min>
+        <max>  0.4363 </max>
+      </domain>
+      <range>
+        <min> -1 </min>
+        <max>  1 </max>
+      </range>
+      <output>fcs/left-elevon-pos-norm</output>
+    </aerosurface_scale>
+
+    <!-- ── Right elevon: pitch − roll ───────────────────────────────── -->
+    <!-- Negate roll component: right side moves opposite to left for roll -->
+    <pure_gain name="Roll Negated for Right Elevon">
+      <input>fcs/aileron-pos-rad</input>
+      <gain> -1.0 </gain>
+      <output>fcs/roll-negated-for-right</output>
+    </pure_gain>
+
+    <summer name="Right Elevon Sum">
+      <input>fcs/elevator-pos-rad</input>        <!-- pitch (same sign both sides) -->
+      <input>fcs/roll-negated-for-right</input>  <!-- −roll for right side -->
+      <clipto>
+        <min> -0.4363 </min>
+        <max>  0.4363 </max>
+      </clipto>
+      <output>fcs/right-elevon-pos-rad</output>
+    </summer>
+
+    <!-- Normalise right elevon -->
+    <aerosurface_scale name="Right Elevon Normalization">
+      <input>fcs/right-elevon-pos-rad</input>
+      <domain>
+        <min> -0.4363 </min>
+        <max>  0.4363 </max>
+      </domain>
+      <range>
+        <min> -1 </min>
+        <max>  1 </max>
+      </range>
+      <output>fcs/right-elevon-pos-norm</output>
+    </aerosurface_scale>
+
+  </channel>
+
+  <!--
+    VERIFICATION CHECK (after pitch-scale inversion fix):
+      Pitch command +1 (nose up):
+        elevator-pos-rad = −0.4363  (TE UP — inverted scale)
+        aileron-pos-rad  = 0
+        left-elevon-pos-rad  = −0.4363 (TE up → less aft lift → nose UP)  ✓
+        right-elevon-pos-rad = −0.4363 (TE up → less aft lift → nose UP)  ✓
+        Aero: Cm = Cmδe·δe = (−0.35)·(−0.4363) = +0.153 (nose UP)
+
+      Roll command +1 (roll right):
+        elevator-pos-rad = 0
+        aileron-pos-rad  = +0.3491
+        left-elevon-pos-rad  = +0.3491 (TE down → left wing more lift → roll right)
+        right-elevon-pos-rad = −0.3491 (TE up  → right wing less lift → roll right)
+
+      Combined: pitch +0.5, roll +0.5:
+        elevator = −0.218 rad,  aileron = +0.175 rad
+        left  = −0.218 + 0.175 = −0.043 rad  (within +-0.4363)
+        right = −0.218 − 0.175 = −0.393 rad  (within +-0.4363)
+  -->
+
+</system>

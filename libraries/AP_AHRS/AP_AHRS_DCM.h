@@ -131,6 +131,14 @@ public:
     // return true if DCM has a yaw source
     bool yaw_source_available(void) const;
 
+    // true while DCM's launch-acceleration mitigation is active (see
+    // drift_correction()) - used by AP_AHRS to delay handing attitude
+    // authority to an EKF that reports itself healthy/active during or
+    // shortly after a violent (e.g. catapult) launch acceleration,
+    // since the EKF's own attitude estimate can still be badly wrong
+    // in that window even once it passes its own health checks.
+    bool is_launch_accel_active(void) const;
+
     void get_control_limits(float &ekfGndSpdLimit, float &controlScaleXY) const override;
 
 private:
@@ -200,6 +208,20 @@ private:
     Vector3f _omega;                            // Corrected Gyro_Vector data
 
     bool have_initial_yaw; // true if the yaw value has been initialised with a reference
+
+    // set (and continually extended) while a launch-acceleration event
+    // is ongoing, plus a grace period afterwards - see
+    // drift_correction(). Needed because a fast/high-thrust catapult
+    // can push ground speed past GPS_SPEED_MIN in tens of
+    // milliseconds - far faster than the multi-hundred-millisecond
+    // acceleration stroke itself - so an instantaneous
+    // "ground_speed < GPS_SPEED_MIN" check alone drops the mitigation
+    // long before the high-G event, and the GPS-velocity-lag error it
+    // causes, is actually over. The grace period covers the
+    // additional time (empirically ~1-2s) the GPS-velocity-based
+    // centrifugal correction (drift_correction()'s GA_e/vdelta term)
+    // takes to catch up once the acceleration itself has ended.
+    uint32_t _launch_accel_active_until_ms = 0;
 
     // variables to cope with delaying the GA sum to match GPS lag
     Vector3f ra_delayed(uint8_t instance, const Vector3f &ra);

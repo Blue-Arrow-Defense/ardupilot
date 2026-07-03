@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Geran-2 Elevated-Rail Catapult Launch — JSBSim Run Script
+  ===========================================================
+  Variant of geran2_catapult.xml with:
+    - Steeper rail angle: 15 degrees (catapult_elevated.xml IC)
+    - Higher catapult force: 3,500 lbf (15,568 N)
+    - Shorter stroke: 0.30 s  =>  dV = 15568*0.30/200 = 23.3 m/s (45.3 kts)
+    - Aircraft starts 2 m above ground (raised stand) — clears ground at release
+
+  This is more representative of a real pneumatic rail catapult where the
+  aircraft is launched from a stand 1.5–2.5 m above ground level.
+
+  IC file: catapult_elevated.xml (V=0, theta=15 deg, alt=6.5 ft)
+
+  Usage:
+    # Load manually in Python:
+    fdm.load_script('.../scripts/geran2_catapult_elev.xml')
+-->
+<runscript xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           name="Geran-2 elevated-rail catapult launch">
+
+  <use aircraft="Geran-2" initialize="catapult_elevated"/>
+
+  <run start="0.0" end="40.0" dt="0.008333">
+
+    <!-- ── t=0: engine start ── -->
+    <event name="Engine Start" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 0.0 </condition>
+      <notify/>
+      <set name="propulsion/magneto_cmd"           value="3"   action="FG_SET"/>
+      <set name="fcs/throttle-cmd-norm[0]"         value="1.0" action="FG_SET"/>
+      <set name="propulsion/starter_cmd"            value="1"   action="FG_SET"/>
+      <set name="propulsion/engine/set-running"     value="1"   action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5: starter off ── -->
+    <event name="Starter Off" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.0 </condition>
+      <notify/>
+      <set name="propulsion/starter_cmd" value="0" action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5.5: CATAPULT FIRES ──
+         3,500 lbf = 15,568 N for 0.30 s.
+         Higher force + shorter stroke: more impulse transferred in less rail length.
+         At 15-deg rail: horizontal dV=22.5 m/s, vertical dV=6.0 m/s.
+         Aircraft is airborne at release (2 m stand + vertical component).
+    -->
+    <event name="Catapult Fire" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.5 </condition>
+      <notify/>
+      <set name="external_reactions/catapult/magnitude" value="3500" action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5.8: catapult releases (0.30 s stroke) ── -->
+    <event name="Catapult Release" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.8 </condition>
+      <notify/>
+      <set name="external_reactions/catapult/magnitude" value="0"   action="FG_SET"/>
+      <set name="fcs/throttle-cmd-norm[0]"              value="0.8" action="FG_SET"/>
+    </event>
+
+  </run>
+</runscript>

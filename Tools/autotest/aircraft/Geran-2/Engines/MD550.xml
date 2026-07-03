@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Swapped from a piston_engine model to an electric_engine.
+     TRIED AND ABANDONED: the piston MD-550 model (magneto/starter/
+     mixture-based FGPiston) never reached a self-sustaining RPM -
+     confirmed directly (via ground-truth engine-rpm/thrust-lbs CSV
+     logging) that it plateaus at ~1500-1560 RPM under starter
+     assistance and decays smoothly to 0 the instant starter_cmd goes
+     to 0, in BOTH the ArduPilot-integrated run AND the aircraft's own
+     "validated" standalone reference script
+     (scripts/geran2_catapult.xml) - this was never actually working,
+     despite that script's header comment claiming it self-sustains at
+     ~4,500 RPM. The displacement was already under-calibrated (see
+     git history / CATAPULT_LAUNCH.md Known limitations #2) and even
+     correcting that (300->450 in3, the value the old header comment
+     said it should be) didn't fix the starter hand-off.
+     Piston combustion timing/mixture calibration needs real flight
+     data to fix properly (per CATAPULT_LAUNCH.md) - not something to
+     keep guessing at. FGElectric (src/models/propulsion/FGElectric.cpp)
+     has none of that failure mode: power is simply
+     PowerWatts * throttle, with no RPM/spark/mixture/starter state to
+     get stuck in, so it can't stall or fail to catch. Power sized to
+     match this aircraft's own propeller (Engines/my_propeller.xml)
+     design point: that file's own worked example computes ~24.8 kW
+     shaft power at its designed full-throttle equilibrium (Cp=0.043,
+     n=77.8 rev/s, D=1.0m); rounded up with margin for climb-out. -->
+<electric_engine name="MD550">
+  <!-- 38 kW ~= the real MD-550's ~50 hp rating, and matches this
+       aircraft's own propeller design point: my_propeller.xml sizes the
+       prop so that at full-rated shaft power (piston at 7000 rpm ->
+       prop 4667 rpm via the 1.5 reduction) it makes ~650 N of thrust.
+       Reproducing that same rated power with the electric model gives
+       the same ~650 N available, which - against ~350-430 N of drag at
+       the 40-45 m/s flying speeds this high-wing-loading airframe needs
+       - leaves a healthy excess for the climb-out. The earlier 28 kW
+       was under-rated for this prop and left the climb marginal. -->
+  <power unit="WATTS"> 38000 </power>
+</electric_engine>

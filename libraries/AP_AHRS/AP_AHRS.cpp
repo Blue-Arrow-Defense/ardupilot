@@ -2041,6 +2041,19 @@ AP_AHRS::EKFType AP_AHRS::_active_EKF_type(void) const
         } else if (!can_use_ekf) {
             // No choice - we have to use DCM
             return EKFType::DCM;
+        } else if (ret != EKFType::DCM && can_use_dcm && dcm.is_launch_accel_active()) {
+            // An EKF can report itself healthy/active within about a
+            // second of a violent (e.g. catapult) launch acceleration,
+            // but its own attitude estimate can still be badly wrong
+            // for a short window after such an event even once it
+            // passes its own health checks - confirmed directly on a
+            // fast catapult-launched fixed wing, where handing
+            // attitude authority to EKF3 this early produced a much
+            // larger, longer-lived roll/pitch error than DCM's own
+            // (now specifically mitigated - see
+            // AP_AHRS_DCM::drift_correction) response to the same
+            // event. Stay on DCM until that window has passed.
+            return EKFType::DCM;
         }
 
         const bool disable_dcm_fallback = fly_forward?

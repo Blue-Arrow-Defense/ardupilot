@@ -1,0 +1,97 @@
+# Extra defaults for catapult-launched Geran-2.
+#
+# AIRSPEED ENVELOPE - the single most important fix for "launches but
+# won't climb / sinks back to the ground". This is a HIGH-wing-loading
+# airframe: 200 kg over a 4.6875 m2 wing = ~42 kg/m2, comparable to a
+# light jet, NOT a slow trainer. With CLmax~1.0 (and that only at ~40
+# deg alpha, unusable), the speed at which lift can actually equal
+# weight at a flyable alpha is ~40 m/s; a comfortable cruise is ~45
+# m/s (the real Shahed-136 class cruises ~180 km/h = ~50 m/s). The
+# generic base file (Tools/autotest/default_params/plane-jsbsim.parm)
+# is tuned for the Rascal trainer and sets AIRSPEED_CRUISE 22 /
+# AIRSPEED_MIN 10 - i.e. it tells TECS to fly this aircraft at roughly
+# HALF its stall speed. TECS then pitches up to bleed to that
+# impossible target, the wing mushes, and it sinks. Ground-truth CSV
+# (/tmp/geran2_debug.csv) confirmed the mechanism directly: released at
+# ~29 m/s the aircraft rotated to alpha~15 deg but lift was only ~940 N
+# vs 1961 N weight, so it sank 3m to the ground within 1.3s. Setting a
+# realistic envelope for THIS airframe (below) is what lets it fly the
+# mission. Loaded after plane-jsbsim.parm, so these override it.
+AIRSPEED_MIN    32
+AIRSPEED_CRUISE 45
+AIRSPEED_MAX    60
+# Cruise-ish trim throttle; THR_MAX stays 100 from the base file so the
+# climb-out isn't throttle-limited.
+TRIM_THROTTLE   60
+
+# The catapult (see libraries/SITL/SIM_JSBSim.cpp) now releases the
+# aircraft at ~40 m/s - already well above stall and above this rotate
+# speed - so takeoff rotation to the climb schedule triggers
+# immediately, which is exactly what a catapult launch wants (the
+# aircraft is committed to flying the instant it leaves the rail). 30
+# = past the ~27 m/s theoretical stall, comfortably below release.
+TKOFF_ROTATE_SPD 30.0
+
+# TECS climb/sink authority. With 38 kW and ~650 N thrust available
+# against ~350-430 N cruise drag there is a solid excess-power margin,
+# so allow a real climb rate to the 41m/100m mission altitudes.
+TECS_CLMB_MAX   6.0
+TECS_SINK_MIN   3.0
+
+# BANK LIMIT + NAV SMOOTHING - the fix for "climbs fine, then spirals
+# into the ground on the first turn". The base plane-jsbsim.parm allows
+# ROLL_LIMIT_DEG 65, which for this low-aspect-ratio delta is an
+# aerobatic bank: ground-truth CSV showed that as soon as L1 turned
+# left toward WP2 the roll controller banked all the way to -71 deg,
+# the vertical component of lift collapsed (cos71 = 0.33), the nose
+# dropped to -15 deg and it spiralled in at 60 m/s while the elevator
+# was still commanding nose-up (a classic over-banked spiral dive, not
+# a pitch problem). Capping the bank to a sane cruise value keeps the
+# turn coordinated and the vertical lift intact; a longer L1 period
+# makes the heading capture toward each waypoint gentler so it doesn't
+# slam to the bank limit and overshoot.
+ROLL_LIMIT_DEG  35
+NAVL1_PERIOD    20
+
+# The generic plane-jsbsim.parm sets SERVO2_REVERSED=1, tuned for a
+# different reference airframe. For Geran-2's own elevon/elevator
+# convention this reverses the pitch control loop: confirmed directly
+# by comparing live catapult launches with SERVO2_REVERSED=1 (elevator
+# saturates fighting itself, pitch diverges/oscillates and never
+# recovers) vs =0 (elevator moves smoothly and pitch converges back
+# toward level after the initial post-launch transient).
+SERVO2_REVERSED 0
+
+# Bit 2 (value 4) = DISABLE_TOFF_ATTITUDE_CHK. auto_takeoff_check()
+# (ArduPlane/takeoff.cpp) normally requires pitch/roll to stay within
+# bounds for its whole confirmation window before it hands off to real
+# TECS/attitude control - before that, the aircraft coasts on a fixed
+# pre-launch elevator/aileron output. If anything (e.g. the catapult's
+# own rotation) pushes attitude out of bounds during that window, the
+# check keeps failing, launch never confirms, and the aircraft keeps
+# coasting on that fixed pre-launch output while diverging further -
+# a chicken-and-egg loop that (confirmed directly) no amount of extra
+# pre-release hold time escapes, since it's gated by attitude, not
+# elapsed time. A catapult provides a known-good launch the instant it
+# fires, so this attitude gate is unnecessary here.
+FLIGHT_OPTIONS 4
+
+ARMING_CHECK 0
+
+# TRIED AND REVERTED: RLL2SRV_RMAX/PTCH2SRV_RMAX_UP/_DN capped at
+# progressively tighter values (60 -> 30 -> 8 deg/s) to bound the
+# post-launch roll excursion at its source. This helped at first (peak
+# bank fell from ~78deg to ~24deg) but stopped helping below ~24deg,
+# and ground-truth CSV logging showed why: with RLL2SRV_RMAX=8, the
+# roll controller was visibly trying to correct (aileron command
+# swinging from -0.17 to +0.15, the right direction) but capped so
+# hard it only ever reached ~0.05 rad of actual surface deflection -
+# nowhere near enough authority to arrest a sustained ~20 deg/s roll
+# rate that stayed essentially constant regardless of aileron command.
+# The rate cap fixed the FALSE-estimate-driven full-deflection
+# overreaction (that's what the DCM launch-acceleration fix in
+# AP_AHRS_DCM.cpp actually addresses), but then handicapped the
+# controller's ability to apply a big, legitimate correction once one
+# was actually needed - the opposite problem. Removed; rely on the
+# DCM fix alone to prevent the false overreaction, and let the roll
+# controller use full authority for real corrections.

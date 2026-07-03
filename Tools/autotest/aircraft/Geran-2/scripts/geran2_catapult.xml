@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Geran-2 Ground-Rail Catapult Launch — JSBSim Run Script
+  =========================================================
+  Simulates a complete catapult launch sequence from engine start through
+  the catapult stroke and initial climb-out.
+
+  Launch sequence:
+    t =  0.0 s   Engine start: magneto ON, throttle 100%, starter ON
+    t =  5.0 s   Starter off — engine self-sustains at ~4,500 RPM
+    t =  5.5 s   CATAPULT FIRES: 2,810 lbf (12,500 N) applied for 0.40 s
+    t =  5.9 s   Catapult releases; throttle reduced to 80%
+    t =  6–35 s  Free flight (no autopilot modelled in this script)
+
+  Catapult force sizing:
+    F   = 2,810 lbf = 12,500 N
+    dt  = 0.40 s
+    dV  = F*dt/m = 12500 * 0.40 / 200 = 25 m/s  (48.6 kts)
+    Stall speed approx 43 kts  =>  launch margin +5.6 kts
+
+  Property set to fire catapult:
+    external_reactions/catapult/magnitude  [lbf]
+
+  Direction (in Geran-2.xml external_reactions):
+    x=0.9659, y=0, z=0.2588  (forward + 15-deg upward in body frame)
+
+  IC file: catapult_init.xml (V=0, theta=5 deg, alt=10 ft)
+
+  Usage:
+    python3 launch_catapult.py - -root /path/to/jtest - -mode rail
+-->
+<runscript xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           name="Geran-2 ground-rail catapult launch">
+
+  <use aircraft="Geran-2" initialize="catapult_init"/>
+
+  <run start="0.0" end="35.0" dt="0.008333">
+
+    <!-- ── t=0: engine start ── -->
+    <event name="Engine Start" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 0.0 </condition>
+      <notify/>
+      <set name="propulsion/magneto_cmd"           value="3"   action="FG_SET"/>
+      <set name="fcs/throttle-cmd-norm[0]"         value="1.0" action="FG_SET"/>
+      <set name="propulsion/starter_cmd"            value="1"   action="FG_SET"/>
+      <set name="propulsion/engine/set-running"     value="1"   action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5: starter off; engine self-sustains ── -->
+    <event name="Starter Off" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.0 </condition>
+      <notify/>
+      <set name="propulsion/starter_cmd" value="0" action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5.5: CATAPULT FIRES ──
+         2,810 lbf = 12,500 N forward + 15-deg upward (body frame).
+         Duration: 0.40 s  =>  release at t=5.9 s.
+    -->
+    <event name="Catapult Fire" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.5 </condition>
+      <notify/>
+      <set name="external_reactions/catapult/magnitude" value="2810" action="FG_SET"/>
+    </event>
+
+    <!-- ── t=5.9: catapult releases ── -->
+    <event name="Catapult Release" type="condition" persistent="false">
+      <condition> simulation/sim-time-sec ge 5.9 </condition>
+      <notify/>
+      <set name="external_reactions/catapult/magnitude" value="0"   action="FG_SET"/>
+      <set name="fcs/throttle-cmd-norm[0]"              value="0.8" action="FG_SET"/>
+    </event>
+
+  </run>
+</runscript>

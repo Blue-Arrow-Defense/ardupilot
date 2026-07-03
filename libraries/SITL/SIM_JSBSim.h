@@ -65,6 +65,19 @@ private:
     // default JSBSim model
     const char *jsbsim_model = "Rascal";
 
+    // start already off the launcher (catapult/rail), flying at
+    // launch speed, instead of stationary on the ground. Enabled
+    // via a "-catapult" suffix on the model name, e.g. jsbsim:Geran-2-catapult
+    bool catapult_launch;
+
+    // wall-clock time (ms) arming was first observed for a
+    // catapult_launch aircraft; 0 until then. Used to keep forcing
+    // full throttle for a couple of seconds past arming, covering the
+    // catapult stroke, since ArduPilot's own throttle-suppression
+    // safety logic can otherwise re-zero throttle the instant control
+    // is handed back, right when the engine needs to be at full power
+    uint32_t catapult_armed_at_ms;
+
     bool created_templates;
     bool started_jsbsim;
     bool opened_control_socket;

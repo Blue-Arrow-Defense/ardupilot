@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Geran-2 — Ground-Rail Catapult Initial Conditions
+  ===================================================
+  Aircraft sits stationary on the belly rail at ground level.
+  Rail elevation angle: 5 degrees nose-up.
+  Engine is pre-started by the run script (running=-1 requests all engines on).
+
+  Coordinate note:
+    altitude = 10 ft (3.05 m) places the fuselage bottom just above the
+    ground surface, matching the belly-contact spring rest position.
+    The run script starter sequence gets the engine to ~4,500 RPM before
+    the catapult fires.
+
+  Paired run script: scripts/geran2_catapult.xml
+-->
+<initialize name="catapult_init">
+  <!-- Velocity: stationary on rail -->
+  <vn   unit="FT/SEC">  0.0 </vn>
+  <ve   unit="FT/SEC">  0.0 </ve>
+  <vd   unit="FT/SEC">  0.0 </vd>
+
+  <!-- Height: 3 m above MSL / ground datum (rail rest height) -->
+  <altitude unit="FT"> 10.0 </altitude>
+
+  <!-- Attitude: rail angle -->
+  <phi   unit="DEG">  0.0 </phi>    <!-- no roll -->
+  <theta unit="DEG">  5.0 </theta>  <!-- 5-degree nose-up (shallow rail) -->
+  <psi   unit="DEG">  0.0 </psi>    <!-- heading: north -->
+
+  <!-- Request all engines running (starter sequence in run script overrides) -->
+  <running> -1 </running>
+</initialize>

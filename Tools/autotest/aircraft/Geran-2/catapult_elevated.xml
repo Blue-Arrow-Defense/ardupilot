@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Geran-2 — Elevated-Rail Catapult Initial Conditions
+  =====================================================
+  Aircraft on a raised launch stand (~2 m above ground).
+  Rail elevation angle: 15 degrees — typical for bungee/pneumatic UAV catapults.
+  At 15 deg and 23 m/s launch speed: horizontal dV=22.2 m/s, vertical dV=5.9 m/s.
+  The aircraft clears the rail and begins climbing immediately after release.
+
+  Paired run script: scripts/geran2_catapult_elev.xml
+-->
+<initialize name="catapult_elevated">
+  <!-- Velocity: stationary on rail -->
+  <vn   unit="FT/SEC">  0.0 </vn>
+  <ve   unit="FT/SEC">  0.0 </ve>
+  <vd   unit="FT/SEC">  0.0 </vd>
+
+  <!-- Height: 2 m above MSL (stand height keeps aircraft clear of ground) -->
+  <altitude unit="FT">  6.5 </altitude>
+
+  <!-- Attitude: steeper rail angle for clear liftoff -->
+  <phi   unit="DEG">  0.0 </phi>
+  <theta unit="DEG"> 15.0 </theta>  <!-- 15-degree nose-up (elevated stand) -->
+  <psi   unit="DEG">  0.0 </psi>
+
+  <running> -1 </running>
+</initialize>
