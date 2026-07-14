@@ -258,43 +258,16 @@ bool JSBSim::create_templates(void)
 "\n");
     }
 
-    // Diagnostic: high-rate ground-truth CSV of the flight dynamics
-    // during catapult launch (/tmp/geran2_debug.csv), independent of
-    // MAVLink telemetry sampling (which can alias fast transients and
-    // shows misleading altitude jumps across EKF origin resets). Used
-    // to trace a still-open issue: ArduPlane's attitude estimate goes
-    // briefly but badly wrong within a few seconds of the aircraft
-    // actually moving (correlates with "EKF3 active"/GPS-velocity yaw
-    // alignment in the console log), and any flight mode that actively
-    // reacts to attitude (AUTO/TAKEOFF, FBWA) turns that into a real,
-    // physical departure by commanding a large "correction" against a
-    // bad estimate. A mode that doesn't react at all (CRUISE, observed
-    // to leave the elevator at exactly neutral throughout) flies the
-    // same physical launch cleanly instead. Keep this CSV output until
-    // that estimator-side issue is root-caused - safe to remove after.
-    char debug_csv_output[1024] = "";
-    if (catapult_launch) {
-        snprintf(debug_csv_output, sizeof(debug_csv_output),
-"  <output name=\"/tmp/geran2_debug.csv\" type=\"CSV\" rate=\"120\">\n"
-"    <property> attitude/theta-deg </property>\n"
-"    <property> attitude/phi-deg </property>\n"
-"    <property> aero/alpha-deg </property>\n"
-"    <property> aero/beta-deg </property>\n"
-"    <property> velocities/q-rad_sec </property>\n"
-"    <property> velocities/vt-fps </property>\n"
-"    <property> fcs/elevator-pos-rad </property>\n"
-"    <property> fcs/elevator-cmd-norm </property>\n"
-"    <property> fcs/aileron-pos-rad </property>\n"
-"    <property> fcs/aileron-cmd-norm </property>\n"
-"    <property> velocities/p-rad_sec </property>\n"
-"    <property> position/h-agl-ft </property>\n"
-"    <property> moments/m-total-lbsft </property>\n"
-"    <property> external_reactions/catapult/magnitude </property>\n"
-"    <property> fcs/throttle-cmd-norm </property>\n"
-"    <property> fcs/throttle-pos-norm </property>\n"
-"  </output>\n"
-"\n");
-    }
+    // (Removed) A high-rate ground-truth CSV of the launch dynamics
+    // (/tmp/geran2_debug.csv, 120 Hz) used to root-cause the early
+    // post-launch attitude error. That error is now handled by the DCM
+    // launch-acceleration mitigation (see AP_AHRS_DCM::drift_correction
+    // and AP_AHRS::_active_EKF_type), and AUTO catapult launches climb
+    // out cleanly in testing, so the diagnostic is no longer needed. It
+    // wrote an unbounded file for the whole flight, so it is disabled
+    // here; to re-enable for debugging, populate debug_csv_output with a
+    // JSBSim <output type="CSV"> block.
+    char debug_csv_output[1] = "";
 
     fprintf(f,
 "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
