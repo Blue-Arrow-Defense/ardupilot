@@ -46,6 +46,7 @@ JSBSim::JSBSim(const char *frame_str) :
     jsbsim_script(nullptr),
     jsbsim_fgout(nullptr),
     catapult_launch(false),
+    air_start(false),
     catapult_armed_at_ms(0),
     created_templates(false),
     started_jsbsim(false),
@@ -64,12 +65,19 @@ JSBSim::JSBSim(const char *frame_str) :
     if (model_name != nullptr) {
         jsbsim_model = model_name + 1;
     }
-    if (strstr(frame_str, "-catapult")) {
+    // "-catapult" ground-launches from a rail; "-air" uses the same launch
+    // mechanism but from an elevated start (see air_start). Both imply a
+    // launch-on-arm sequence and share the "Geran-2" model directory.
+    if (strstr(frame_str, "-catapult") || strstr(frame_str, "-air")) {
         catapult_launch = true;
-        // strip the "-catapult" suffix so the model name still
+        air_start = (strstr(frame_str, "-air") != nullptr);
+        // strip the "-catapult"/"-air" suffix so the model name still
         // matches the aircraft directory on disk
         char *model_copy = strdup(jsbsim_model);
         char *suffix = strstr(model_copy, "-catapult");
+        if (suffix == nullptr) {
+            suffix = strstr(model_copy, "-air");
+        }
         if (suffix != nullptr) {
             *suffix = '\0';
         }
@@ -387,6 +395,15 @@ bool JSBSim::create_templates(void)
         ic_alt_m = 15.0;
         ic_theta_deg = 5.0;
         ic_running = "  <running> -1 </running>\n";
+        // Air start: identical launch mechanics, but held at an elevated
+        // altitude so the aircraft appears and flies at height rather than
+        // ground launching. The transient post-release sink (~3 m) is
+        // irrelevant with this much clearance. Height is tunable via
+        // SITL_AIR_START_ALT (m AGL) so it can be adjusted without a rebuild.
+        if (air_start) {
+            const char *alt_env = getenv("SITL_AIR_START_ALT");
+            ic_alt_m = alt_env ? atof(alt_env) : 150.0;
+        }
     }
 
     fprintf(f,

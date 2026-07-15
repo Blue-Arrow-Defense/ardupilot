@@ -70,6 +70,13 @@ private:
     // via a "-catapult" suffix on the model name, e.g. jsbsim:Geran-2-catapult
     bool catapult_launch;
 
+    // "air start": same launch mechanism as catapult_launch (hold-down until
+    // armed, then fire the launch force on arm) but from an elevated initial
+    // altitude, so the aircraft appears and flies at height instead of ground
+    // launching. Enabled via an "-air" suffix, e.g. jsbsim:Geran-2-air. Implies
+    // catapult_launch. Height is SITL_AIR_START_ALT metres AGL (default 150).
+    bool air_start;
+
     // wall-clock time (ms) arming was first observed for a
     // catapult_launch aircraft; 0 until then. Used to keep forcing
     // full throttle for a couple of seconds past arming, covering the

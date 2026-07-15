@@ -381,6 +381,20 @@ class VehicleInfo(object):
                 "model": "jsbsim:Geran-2-catapult",
                 "external": True,
             },
+            # Air-start variant of the Geran-2: same airframe + tuning, but the
+            # JSBSim backend holds it at altitude and launches on arm (see the
+            # "-air" handling / air_start in SIM_JSBSim.cpp) instead of ground
+            # launching. Used for the autonomous sims, which appear and fly at
+            # height; only the manual sim uses the ground catapult.
+            "jsbsim:Geran-2-air": {
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "default_params/plane-jsbsim.parm",
+                    "aircraft/Geran-2/Geran-2-catapult.parm",
+                ],
+                "model": "jsbsim:Geran-2-air",
+                "external": True,
+            },
             "scrimmage-plane" : {
                 "waf_target": "bin/arduplane",
                 "default_params_filename": "models/plane.parm",
