@@ -395,6 +395,28 @@ class VehicleInfo(object):
                 "model": "jsbsim:Geran-2-air",
                 "external": True,
             },
+            # Delta-38: 38 kg MTOW tailless delta, pusher piston, catapult
+            # launched. Built from "uav jsbsim questionnaire v3_13-08-26.docx";
+            # see aircraft/Delta-38/MODEL-NOTES.md. Same two-frame pattern as
+            # the Geran-2: "-catapult" ground launches, "-air" starts airborne.
+            "jsbsim:Delta-38-catapult": {
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "default_params/plane-jsbsim.parm",
+                    "aircraft/Delta-38/Delta-38-catapult.parm",
+                ],
+                "model": "jsbsim:Delta-38-catapult",
+                "external": True,
+            },
+            "jsbsim:Delta-38-air": {
+                "waf_target": "bin/arduplane",
+                "default_params_filename": [
+                    "default_params/plane-jsbsim.parm",
+                    "aircraft/Delta-38/Delta-38-catapult.parm",
+                ],
+                "model": "jsbsim:Delta-38-air",
+                "external": True,
+            },
             "scrimmage-plane" : {
                 "waf_target": "bin/arduplane",
                 "default_params_filename": "models/plane.parm",

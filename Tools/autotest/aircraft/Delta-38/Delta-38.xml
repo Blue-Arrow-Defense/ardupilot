@@ -1,0 +1,696 @@
+<?xml version="1.0"?>
+<?xml-stylesheet type="text/xsl" href="http://jsbsim.sourceforge.net/JSBSim.xsl"?>
+<!--
+  Delta-38 - JSBSim FDM v2.0
+  Tailless delta-wing UAV, pusher piston engine, catapult launched.
+
+  BUILT FROM: "uav jsbsim questionnaire v3_13-08-26.docx" - every number the
+  manufacturer answered is used verbatim and tagged [Q x.y] with the
+  questionnaire item it came from.  Everything else is DERIVED (tagged [DER])
+  or an ENGINEERING ESTIMATE (tagged [EST]) - see MODEL-NOTES.md for the
+  derivation of each and DATA-GAPS.md for what would replace the estimates.
+
+  Coordinate system (as specified in [Q 2.10]):
+    x = 0 at the tip of the nose fairing, x increases toward the tail
+    y + = starboard,  z + = up
+  (JSBSim converts this structural frame to its own body frame internally.)
+
+  PLANFORM [DER from Q 2.1/2.2/2.3/2.9]
+    S=1.75 m2, b=1.68 m => AR=1.613 (true slender delta)
+    Root chord = 1.79 m (apex at the nose datum, straight unswept trailing
+      edge at x=1.79 - the only planform consistent with Q 2.9 and Q 2.1-2.3),
+      tip chord 0.293 m, taper 0.164
+    LE sweep 60.7 deg, c/4 sweep 53.2 deg
+    MAC = 1.221 m (manufacturer states 1.243 - 1.8% apart, within the
+      measurement spread of a hand-measured delta; the manufacturer's value is
+      used for <chord> so the reference length matches their data sheet)
+    x_LEMAC = 0.569 m, y_MAC = 0.319 m
+
+  MASS [Q 3.2/3.3/3.4/3.9/3.10/4.12/4.13]
+    empty (airframe+engine+avionics) 15.5 kg @ x=1.370  => structure-only
+      13.3 kg @ x=1.3005 once the 2.2 kg engine is broken out as a pointmass
+    payload 14.9 kg @ x=0.600, fuel 5.5 L = 3.96 kg @ x=0.976
+    typical all-up 34.36 kg (MTOW 38 kg leaves 3.6 kg of payload growth)
+    CG 0.991 m, and it moves only +1.9 mm as the tank empties - the tank sits
+      essentially on the CG, which is a genuinely good design point.
+
+  STABILITY - READ THIS
+    The neutral point of a slender delta is NOT at 25% MAC.  Estimates for
+    AR=1.61, LE sweep 60.7 deg span x_ac = 0.566..0.667 root chord, i.e. a
+    static margin anywhere from +1.8% to +16.6% MAC against the given CG.
+    This model adopts x_ac = 0.615*cr = 1.101 m (SM = 9.0% MAC), the middle of
+    that band.  It is the single largest uncertainty in the model - see
+    DATA-GAPS.md item 1.  The neutral point sets the VALUE of Cma only; AERORP
+    itself is placed ON THE CG, for the reason spelled out at the AERORP
+    element below.
+-->
+<fdm_config name="Delta-38" version="2.0" release="BETA"
+   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+   xsi:noNamespaceSchemaLocation="http://jsbsim.sourceforge.net/JSBSim.xsd">
+
+ <fileheader>
+  <author>Derived from uav jsbsim questionnaire v3 (13-08-26)</author>
+  <filecreationdate>2026-08-26</filecreationdate>
+  <version>1.0</version>
+  <description>Delta-38: 38 kg MTOW tailless delta UAV, pusher piston, catapult launch</description>
+ </fileheader>
+
+ <metrics>
+  <wingarea  unit="M2"> 1.75  </wingarea>   <!-- [Q 2.1] -->
+  <wingspan  unit="M">  1.68  </wingspan>   <!-- [Q 2.2] -->
+  <chord     unit="M">  1.243 </chord>      <!-- [Q 2.3] MAC -->
+  <wing_incidence unit="DEG"> 3.0 </wing_incidence> <!-- [Q 2.4]; folded into CL0, see LIFT -->
+  <htailarea unit="M2"> 0.00  </htailarea>  <!-- [Q 2.5] pure delta, no h-tail -->
+  <htailarm  unit="M">  0.00  </htailarm>   <!-- [Q 2.6] -->
+  <vtailarea unit="M2"> 0.150 </vtailarea>  <!-- [Q 2.7] total winglet area -->
+  <!-- [DER] Q 2.8 was left blank. Winglets sit at the wingtips; their ac is at
+       25% of the tip chord => x = 1.497 + 0.25*0.293 = 1.570 m, arm to the CG
+       (0.991) = 0.579 m. -->
+  <vtailarm  unit="M">  0.579 </vtailarm>
+
+  <!--
+    AERORP IS DELIBERATELY AT THE CG, NOT AT THE NEUTRAL POINT.
+
+    JSBSim applies the LIFT/DRAG/SIDE forces at AERORP and then adds r x F
+    about the CG on top of whatever the PITCH/ROLL/YAW <axis> functions
+    produce (FGAerodynamics::Calculate: "vMoments += vDXYZcg*vForces", where
+    vDXYZcg is the AERORP-to-CG offset). So if AERORP sits at the neutral point
+    AND the model carries a Cma term, the static pitch stability is counted
+    TWICE.
+
+    That is not a theoretical worry, it was measured. With AERORP at the
+    estimated neutral point of 1.101 m, i.e. 0.110 m behind the CG, ~245 N of
+    lift in the post-launch climb-out generated an extra -27 N*m of nose-down
+    moment against the +34 N*m the aero functions were producing. Net pitching
+    moment about zero: the aircraft would not rotate out of the launch mush no
+    matter how much elevon ArduPilot commanded, and it flew into the ground
+    about 4 s after every launch. (The Geran-2 model has the same double count,
+    AERORP 1.698 m against a CG of 1.433 m, which is very likely part of why it
+    needs such an extreme launch speed to get away.)
+
+    With AERORP on the CG, r x F is zero and Cma = -0.156/rad is the whole
+    story, which is exactly what the derivative set below was computed for. The
+    estimated neutral point (0.615*root chord = 1.101 m) still sets the VALUE
+    of Cma - see aero/moment/Pitch_alpha and DATA-GAPS.md item 1 - it just must
+    not also be the force application point.
+
+    The CG moves only 1.9 mm as the tank empties, so one fixed value is exact
+    enough for the whole flight.
+  -->
+  <location name="AERORP" unit="M">
+   <x> 0.991 </x>
+   <y> 0.000 </y>
+   <z> 0.000 </z>
+  </location>
+
+  <!-- [Q 2.11] measured IMU position. SITL reads its simulated accelerometer
+       here (FGAuxiliary vPilotAccel), so the real offset is honoured. -->
+  <location name="EYEPOINT" unit="M">
+   <x>  1.327 </x>
+   <y> -0.017 </y>
+   <z> -0.044 </z>
+  </location>
+
+  <location name="VRP" unit="M">
+   <x> 0.00 </x>
+   <y> 0.00 </y>
+   <z> 0.00 </z>
+  </location>
+ </metrics>
+
+ <mass_balance>
+  <!--
+    MASS BUDGET (x from the nose datum)
+      structure+avionics  13.30 kg @ 1.3005   [Q3.3 15.5 minus the engine]
+      engine (pointmass)   2.20 kg @ 1.790    [Q3.9]
+      payload (pointmass) 14.90 kg @ 0.600    [Q3.10]
+      fuel (tank)          3.96 kg @ 0.976    [Q4.12/4.13, 5.5 L MOGAS]
+      =====================================
+      total               34.36 kg,  CG = 0.9907 m
+    Empty CG (no fuel/payload) is 1.370 m [Q 3.4]; the model reproduces it
+    exactly because the structural CG above is back-solved from it.
+
+    INERTIA [DER] - Q 3.5-3.7 were answered "0" (= let the tool estimate).
+
+    IMPORTANT: JSBSim treats <ixx>/<iyy>/<izz> as the BASE inertia of the
+    <emptywt> structure about the structural CG, and ADDS the parallel-axis
+    (transfer) terms of every pointmass and tank on top. So only the
+    structure's own inertia goes here; putting the TOTAL in would count the
+    transfer terms twice. JSBSim's own Mass Properties Report is the check:
+    it must print a total Iyy of ~9.4 slug-ft2 = 12.7 kg*m2.
+
+    Structure = 13.3 kg spread over the 1.79 x 1.68 m delta plate:
+      Ixx = m*b^2/24  = 13.3*2.8224/24 = 1.56
+      Iyy = m*cr^2/18 = 13.3*3.2041/18 = 2.37   (triangular chordwise mass
+                                                 distribution, variance cr^2/18)
+      Izz = Ixx + Iyy = 3.93                    (flat-plate relation)
+    plus the payload's own body inertia (0.5 m long, 0.25 m dia: 0.23/0.37/0.37)
+    and small terms for the fuel and the engine:
+      => base Ixx 1.82, Iyy 2.79, Izz 4.35
+    JSBSim then adds the transfer terms (Ixx 0.03, Iyy 4.98, Izz 4.96) for a
+    total of Ixx 1.85, Iyy 7.77, Izz 9.31 kg*m2. Radii of gyration
+    k_x/b = 0.14 and k_y/L = 0.27, both normal for a delta.
+
+    Ixz = 0 per [Q 3.8] (symmetric airframe); the point-mass sum gives
+    -0.14 kg*m2, small enough that the manufacturer's answer is kept.
+  -->
+  <ixx unit="KG*M2"> 1.82 </ixx>
+  <iyy unit="KG*M2"> 2.79 </iyy>
+  <izz unit="KG*M2"> 4.35 </izz>
+  <ixz unit="KG*M2"> 0.00 </ixz>
+
+  <emptywt unit="KG"> 13.30 </emptywt>
+  <location name="CG" unit="M">
+   <x> 1.3005 </x>   <!-- structure-only CG, back-solved from Q 3.4 -->
+   <y> 0.0000 </y>
+   <z> 0.0000 </z>
+  </location>
+
+  <pointmass name="Payload">
+   <description>[Q 3.10] 14.9 kg mission payload in the forward bay</description>
+   <weight unit="KG"> 14.90 </weight>
+   <location name="POINTMASS" unit="M">
+    <x> 0.600 </x>
+    <y> 0.000 </y>
+    <z> 0.021 </z>
+   </location>
+  </pointmass>
+
+  <pointmass name="Engine">
+   <description>[Q 3.9] 2.2 kg engine, aft (pusher)</description>
+   <weight unit="KG"> 2.20 </weight>
+   <location name="POINTMASS" unit="M">
+    <x>  1.790 </x>
+    <y>  0.000 </y>
+    <z> -0.010 </z>
+   </location>
+  </pointmass>
+ </mass_balance>
+
+ <ground_reactions>
+  <!--
+    [EST] No landing gear [Q 7.2]: catapult launch, belly recovery.  These
+    STRUCTURE contacts only stop the aircraft falling through the ground.
+    Spring/damping scaled to 34 kg (Geran-2's 10000 N/m is sized for 200 kg):
+    337 N over three contacts at 4000 N/m = ~28 mm static deflection.
+    SKID_AFT sits at z=-0.27, just below the propeller tip (z=-0.264, see
+    DATA-GAPS.md item 4 - the questionnaire gives no belly depth, so on the
+    numbers supplied the prop is the lowest point of the aircraft).
+  -->
+  <contact type="STRUCTURE" name="BELLY_FWD">
+   <location unit="M"> <x>0.35</x> <y>0.00</y> <z>-0.10</z> </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <rolling_friction> 0.5 </rolling_friction>
+   <spring_coeff  unit="N/M">   4000 </spring_coeff>
+   <damping_coeff unit="N/M/SEC"> 800 </damping_coeff>
+   <max_steer unit="DEG"> 0 </max_steer>
+   <brake_group> NONE </brake_group>
+  </contact>
+  <contact type="STRUCTURE" name="BELLY_MID">
+   <location unit="M"> <x>0.99</x> <y>0.00</y> <z>-0.12</z> </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <rolling_friction> 0.5 </rolling_friction>
+   <spring_coeff  unit="N/M">   4000 </spring_coeff>
+   <damping_coeff unit="N/M/SEC"> 800 </damping_coeff>
+   <max_steer unit="DEG"> 0 </max_steer>
+   <brake_group> NONE </brake_group>
+  </contact>
+  <contact type="STRUCTURE" name="SKID_AFT">
+   <location unit="M"> <x>1.75</x> <y>0.00</y> <z>-0.27</z> </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <rolling_friction> 0.5 </rolling_friction>
+   <spring_coeff  unit="N/M">   4000 </spring_coeff>
+   <damping_coeff unit="N/M/SEC"> 800 </damping_coeff>
+   <max_steer unit="DEG"> 0 </max_steer>
+   <brake_group> NONE </brake_group>
+  </contact>
+  <contact type="STRUCTURE" name="WINGTIP_L">
+   <location unit="M"> <x>1.60</x> <y>-0.84</y> <z>0.00</z> </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <rolling_friction> 0.5 </rolling_friction>
+   <spring_coeff  unit="N/M">   2000 </spring_coeff>
+   <damping_coeff unit="N/M/SEC"> 400 </damping_coeff>
+   <max_steer unit="DEG"> 0 </max_steer>
+   <brake_group> NONE </brake_group>
+  </contact>
+  <contact type="STRUCTURE" name="WINGTIP_R">
+   <location unit="M"> <x>1.60</x> <y>0.84</y> <z>0.00</z> </location>
+   <static_friction>  0.8 </static_friction>
+   <dynamic_friction> 0.5 </dynamic_friction>
+   <rolling_friction> 0.5 </rolling_friction>
+   <spring_coeff  unit="N/M">   2000 </spring_coeff>
+   <damping_coeff unit="N/M/SEC"> 400 </damping_coeff>
+   <max_steer unit="DEG"> 0 </max_steer>
+   <brake_group> NONE </brake_group>
+  </contact>
+ </ground_reactions>
+
+ <propulsion>
+  <engine file="uav_engine">                    <!-- [Q 4.2] name -->
+   <location unit="M">                          <!-- [Q 4.4] -->
+    <x>  1.790 </x>
+    <y>  0.000 </y>
+    <z> -0.010 </z>
+   </location>
+   <orient unit="DEG">                          <!-- [Q 4.6] straight, 0/0/0 -->
+    <pitch>0</pitch> <roll>0</roll> <yaw>0</yaw>
+   </orient>
+   <feed> 0 </feed>                             <!-- [Q 4.7] single tank -->
+   <thruster file="uav_prop">                   <!-- [Q 4.8] name -->
+    <location unit="M">                         <!-- [Q 4.9] = overall length -->
+     <x>  2.070 </x>
+     <y>  0.000 </y>
+     <z> -0.010 </z>
+    </location>
+    <orient unit="DEG">
+     <pitch>0</pitch> <roll>0</roll> <yaw>0</yaw>
+    </orient>
+    <sense>   -1 </sense>       <!-- [Q 4.10] left-hand (counter-clockwise from behind) -->
+    <p_factor> 2 </p_factor>    <!-- [EST] Q 4.11 left to the engineer; typical single pusher -->
+   </thruster>
+  </engine>
+
+  <!-- [Q 4.12/4.13] single 5.5 L tank on the CG. MOGAS A-95: 0.72 kg/L
+       => 3.96 kg = 8.73 lb, density 6.01 lb/US-gal. -->
+  <tank type="FUEL" number="0">
+   <location unit="M">
+    <x>  0.976 </x>
+    <y>  0.000 </y>
+    <z> -0.070 </z>
+   </location>
+   <capacity unit="LBS"> 8.73 </capacity>
+   <contents unit="LBS"> 8.73 </contents>
+   <density  unit="LBS/GAL"> 6.01 </density>
+  </tank>
+ </propulsion>
+
+ <!-- Elevon mixer (no rudder - [Q 7.3] no flaps, delta with elevons only).
+      Outputs consumed by <aerodynamics> below:
+        fcs/elevator-pos-rad = symmetric elevon (pitch), +/-20 deg
+        fcs/aileron-pos-rad  = differential elevon (roll), +/-15 deg -->
+ <system file="Aircraft control"/>
+
+ <flight_control name="FCS: Delta-38">
+  <!-- all channels live in Systems/Aircraft control.xml -->
+ </flight_control>
+
+ <aerodynamics>
+  <!--
+    Reference: S=1.75 m2, b=1.68 m, c=1.243 m, AR=1.613, LE sweep 60.7 deg
+
+    CLalpha  Helmbold (1942) low-AR swept formula, as used for the Geran-2:
+             2*pi*AR / (2 + sqrt(4 + AR^2*(1+tan^2(60.7deg)))) = 1.731 /rad
+    CL0      = CLalpha * 3 deg wing incidence [Q 2.4] = 0.091
+    CLmax    back-solved from VS1 = 88 km/h at MTOW 38 kg [Q 3.1/3.2]:
+             CLmax = 2*W/(rho*V^2*S) = 0.582, reached at alpha = 16.3 deg.
+             The table continues past that into the vortex-lift region
+             (Polhamus, NASA TR R-394) where a delta peaks near 40 deg.
+    Damping derivatives are all NEGATIVE by construction.
+  -->
+
+  <!-- =============================== LIFT =============================== -->
+  <axis name="LIFT">
+
+   <function name="aero/force/Lift_alpha">
+    <description>CL(alpha): CL0=0.091, CLa=1.731/rad (Helmbold), CLmax=0.582 at 16.3 deg (from VS1), vortex lift beyond</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <table>
+      <independentVar lookup="row">aero/alpha-rad</independentVar>
+      <tableData>
+       -0.873  -0.600
+       -0.524  -0.500
+       -0.349  -0.420
+       -0.175  -0.212
+        0.000   0.091   <!-- CL0 from the +3 deg wing setting angle -->
+        0.087   0.242
+        0.175   0.394
+        0.284   0.582   <!-- VS1 point: CLmax(practical) at 16.3 deg -->
+        0.349   0.680   <!-- vortex-lift onset -->
+        0.436   0.790
+        0.524   0.890
+        0.611   0.960
+        0.698   1.000   <!-- vortex-lift peak, ~40 deg -->
+        0.785   0.940
+        0.873   0.820
+        1.047   0.600
+        1.571   0.000
+      </tableData>
+     </table>
+    </product>
+   </function>
+
+   <function name="aero/force/Lift_pitch_rate">
+    <description>CLq=1.10/rad (tailless delta; DATCOM 5.2.1.1)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>velocities/q-aero-rad_sec</property>
+     <property>aero/ci2vel</property>
+     <value> 1.10 </value>
+    </product>
+   </function>
+
+   <function name="aero/force/Lift_alpha_rate">
+    <description>CLadot=0.35/rad (Nelson, Flight Stability 2.5)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>aero/alphadot-rad_sec</property>
+     <property>aero/ci2vel</property>
+     <value> 0.35 </value>
+    </product>
+   </function>
+
+   <function name="aero/force/Lift_elevon">
+    <description>[EST] CLde=0.55/rad. Elevon geometry is NOT in the questionnaire
+    (it flags CLde as uncovered); assumed 22% chord over 20-80% semi-span
+    => S_flap/S = 0.13, flapped wing area 0.60 S. DATCOM 6.1.1.2.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>fcs/elevator-pos-rad</property>
+     <value> 0.55 </value>
+    </product>
+   </function>
+
+  </axis>
+
+  <!-- =============================== DRAG =============================== -->
+  <axis name="DRAG">
+
+   <function name="aero/force/Drag_zero_lift">
+    <description>[EST] CD0=0.032. Cf(Re=2.8e6)=0.0037 turbulent, form factor
+    1.25, Swet/S=2.1 gives 0.0097 clean; the rest is the exposed cylinder head
+    /cooling, the engine fairing, the pusher pylon, winglets, antennas and a
+    belly launch rail fitting. Raymer 12.3 build-up for a small UAV.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <value> 0.032 </value>
+    </product>
+   </function>
+
+   <function name="aero/force/Drag_induced">
+    <description>CDi = k*CL^2, k = 1/(pi*e*AR) = 1/(pi*0.70*1.613) = 0.282 (Anderson 5.3)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>aero/cl-squared</property>
+     <value> 0.282 </value>
+    </product>
+   </function>
+
+   <function name="aero/force/Drag_beta">
+    <description>Sideslip drag, symmetric in beta (DATCOM 4.2.2.1)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <table>
+      <independentVar lookup="row">aero/beta-rad</independentVar>
+      <tableData>
+       -1.571  1.000
+       -0.524  0.090
+       -0.262  0.035
+        0.000  0.000
+        0.262  0.035
+        0.524  0.090
+        1.571  1.000
+      </tableData>
+     </table>
+    </product>
+   </function>
+
+   <function name="aero/force/Drag_elevon">
+    <description>CDde = 0.012*|de| (DATCOM 6.1.5.1)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <abs><property>fcs/elevator-pos-rad</property></abs>
+     <value> 0.012 </value>
+    </product>
+   </function>
+
+  </axis>
+
+  <!-- =============================== SIDE =============================== -->
+  <axis name="SIDE">
+
+   <function name="aero/force/Side_beta">
+    <description>CYb=-0.22/rad. Winglets 0.150 m2 [Q 2.7] with CLa_wl~2.5/rad
+    and sidewash efficiency 0.8 give -0.17; the body adds ~-0.05.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>aero/beta-rad</property>
+     <value> -0.22 </value>
+    </product>
+   </function>
+
+   <function name="aero/force/Side_yaw_rate">
+    <description>CYr=+0.15/rad (Nelson 2.6)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>aero/bi2vel</property>
+     <property>velocities/r-aero-rad_sec</property>
+     <value> 0.15 </value>
+    </product>
+   </function>
+
+  </axis>
+
+  <!-- =============================== PITCH ============================== -->
+  <axis name="PITCH">
+
+   <function name="aero/moment/Pitch_zero">
+    <description>Cm0=+0.016 (reflexed trailing edge), sized so the aircraft
+    trims hands-off at 34 m/s: alpha_trim = Cm0/-Cma = 6.0 deg.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/cbarw-ft</property>
+     <value> 0.016 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Pitch_alpha">
+    <description>Cma = CLa*(x_cg-x_np)/MAC = 1.731*(0.991-1.101)/1.221
+    = -0.156/rad. NEGATIVE = statically stable, SM = 9.0% MAC.
+    THE most uncertain number in this model - see DATA-GAPS.md item 1.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/cbarw-ft</property>
+     <property>aero/alpha-rad</property>
+     <value> -0.156 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Pitch_elevon">
+    <description>Cmde = -CLde * arm/MAC = -0.55*(1.676-0.991)/1.221 = -0.309/rad.
+    Positive de (TE down) = nose down, so the value is negative by JSBSim sign
+    convention. Mach taper is irrelevant below M=0.15 but kept for safety.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/cbarw-ft</property>
+     <property>fcs/elevator-pos-rad</property>
+     <value> -0.309 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Pitch_damping">
+    <description>Cmq=-3.00/rad (tailless delta, DATCOM 5.2.1.2; MUST be negative).
+    Deliberately at the strong end of the -2.2..-3.5 estimate band because the
+    static margin is only 9% MAC: pitch damping is what keeps the short-period
+    well behaved when Cma is weak.</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/cbarw-ft</property>
+     <property>aero/ci2vel</property>
+     <property>velocities/q-aero-rad_sec</property>
+     <value> -3.00 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Pitch_alphadot">
+    <description>Cmadot=-0.60/rad (Etkin and Reid 6.2)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/cbarw-ft</property>
+     <property>aero/ci2vel</property>
+     <property>aero/alphadot-rad_sec</property>
+     <value> -0.60 </value>
+    </product>
+   </function>
+
+  </axis>
+
+  <!-- =============================== ROLL =============================== -->
+  <axis name="ROLL">
+
+   <function name="aero/moment/Roll_beta">
+    <description>Clb=-0.050/rad. 60.7 deg of sweep gives a strong effective
+    dihedral even with zero geometric dihedral [Q 2.4 region] (DATCOM 5.1.2.1;
+    NEGATIVE = stable).</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>aero/beta-rad</property>
+     <value> -0.050 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Roll_damping">
+    <description>Clp=-0.30/rad. Strip integration -(4/(S b^2))*a*int(c y^2 dy)
+    gives -0.19 with the 3D lift slope and -0.43 with the 2D one; -0.30 is the
+    middle (DATCOM 5.1.1.1; MUST be negative).</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>aero/bi2vel</property>
+     <property>velocities/p-aero-rad_sec</property>
+     <value> -0.30 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Roll_yaw_rate">
+    <description>Clr=+0.05/rad (DATCOM 5.1.1.2)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>aero/bi2vel</property>
+     <property>velocities/r-aero-rad_sec</property>
+     <value> 0.05 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Roll_elevon_differential">
+    <description>[EST] Clda=0.15/rad. Strip integration over the assumed elevon
+    span (0.20-0.80 semi-span) gives 0.196; reduced to 0.15 for the tip lift
+    loss of a low-AR delta (DATCOM 6.2.1.1).</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>fcs/aileron-pos-rad</property>
+     <value> 0.15 </value>
+    </product>
+   </function>
+
+  </axis>
+
+  <!-- =============================== YAW =============================== -->
+  <axis name="YAW">
+
+   <function name="aero/moment/Yaw_beta">
+    <description>Cnb=+0.045/rad. Winglets: 2.5*(0.150/1.75)*(0.579/1.68)*0.8
+    = +0.059, less ~0.014 for the destabilising body (DATCOM 5.3.1.1;
+    MUST be positive for directional stability).</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>aero/beta-rad</property>
+     <value> 0.045 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Yaw_damping">
+    <description>Cnr=-0.032/rad = -2*Cnb*(arm/b) (DATCOM 5.3.1.2; MUST be negative)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>aero/bi2vel</property>
+     <property>velocities/r-aero-rad_sec</property>
+     <value> -0.032 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Yaw_roll_rate">
+    <description>Cnp=-0.020/rad, induced-drag asymmetry in a roll (DATCOM 5.3.1.3)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>aero/bi2vel</property>
+     <property>velocities/p-aero-rad_sec</property>
+     <value> -0.020 </value>
+    </product>
+   </function>
+
+   <function name="aero/moment/Yaw_elevon_adverse">
+    <description>Cnda=+0.010/rad adverse yaw from differential elevon (DATCOM 6.2.1.2)</description>
+    <product>
+     <property>aero/qbar-psf</property>
+     <property>metrics/Sw-sqft</property>
+     <property>metrics/bw-ft</property>
+     <property>fcs/aileron-pos-rad</property>
+     <value> 0.010 </value>
+    </product>
+   </function>
+
+  </axis>
+
+ </aerodynamics>
+
+ <!--
+   CATAPULT LAUNCH
+   ==========================================================================
+   [Q, cover page] "Катапультний старт" - no landing gear [Q 7.2].
+
+   SIZING (see MODEL-NOTES.md for the full working):
+     VS at the typical 34.36 kg all-up = 23.2 m/s (VS1 = 24.4 m/s at MTOW 38 kg
+     per Q 3.1/3.2). Target release = 34 m/s = 1.46 VS, so the wing is already
+     flying - and, critically, flying at a LOW alpha - the instant it leaves
+     the rail.
+       F = m*dV/dt = 34.36 * 34 / 0.40 s = 2921 N = 657 lbf
+       a = 8.7 g,  stroke = 0.5*a*t^2 = 6.8 m  (a realistic pneumatic rail)
+     SIM_JSBSim.cpp sets the magnitude from SITL_CATAPULT_LBF (660 for this
+     airframe; the Geran-2 default is 4900 for its 200 kg).
+
+   DIRECTION: pure +X body, i.e. straight along the fuselage axis.
+     The rail IC is 5 deg nose-up, so the aircraft leaves at gamma = +5 deg
+     with alpha = 0 - and at alpha = 0 this wing still makes CL0 = 0.091
+     because of its +3 deg wing setting angle [Q 2.4]. Contrast the Geran-2,
+     whose force is tilted 15 deg up in BODY axes: that produces a velocity
+     vector 15 deg ABOVE the body axis, i.e. alpha = -15 deg at release, and
+     costs it a 3 m post-release sink. Keeping the thrust line along the body
+     axis avoids that failure mode entirely.
+
+   ATTACHMENT: on the CG (x=0.991, z=0).  A real rail carries the reaction
+   through the belly, but it also restrains the airframe in pitch for the whole
+   stroke - which JSBSim's forces/hold-down cannot do once it is released. An
+   off-CG force here would instead integrate freely: 0.12 m of offset at 2921 N
+   is 350 N*m against Iyy=7.8, i.e. 45 rad/s^2, which tumbles the aircraft
+   inside the 0.4 s stroke. A CG-line force reproduces "the rail holds the
+   attitude and only accelerates it forward", which is what the hardware does.
+ -->
+ <external_reactions>
+  <force name="catapult" frame="BODY">
+   <location unit="M">
+    <x> 0.991 </x>
+    <y> 0.000 </y>
+    <z> 0.000 </z>
+   </location>
+   <direction>
+    <x> 1.0 </x>
+    <y> 0.0 </y>
+    <z> 0.0 </z>
+   </direction>
+  </force>
+ </external_reactions>
+
+</fdm_config>

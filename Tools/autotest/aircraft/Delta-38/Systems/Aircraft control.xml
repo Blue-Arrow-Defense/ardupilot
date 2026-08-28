@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Delta-38 - Flight Control System: elevon mixer
+  Systems/Aircraft control.xml
+
+  [Q 7.1] control system = 0, "Conventional Controls" - but on a tailless delta
+  "conventional" means ELEVONS: there is no elevator, no aileron and no rudder
+  surface. [Q 7.3] confirms there are no separate flaps either.
+
+    Left elevon  = pitch + roll
+    Right elevon = pitch - roll
+
+  Channels:
+    Pitch:  fcs/elevator-cmd-norm -> fcs/elevator-pos-rad  (symmetric, +/-20 deg)
+    Roll:   fcs/aileron-cmd-norm  -> fcs/aileron-pos-rad   (differential, +/-15 deg)
+    Yaw:    none. ArduPilot's SITL backend always sends
+            fcs/rudder-cmd-norm; JSBSim's FGFCS defines that property itself, so
+            the command is simply consumed and never reaches a surface.
+            Yaw authority comes from winglet weathervaning (Cnb) and roll-yaw
+            coupling only - which is correct for this airframe.
+
+  TRAVEL LIMITS [EST - the questionnaire has no elevon geometry, see
+  DATA-GAPS.md item 2]
+    +/-20 deg symmetric, +/-15 deg differential, +/-25 deg combined mechanical
+    stop. These are deliberately tighter than the Geran-2's +/-25/+/-20: with a
+    9% MAC static margin and Cmde = -0.309, +/-20 deg is already about 6x the
+    deflection needed to trim anywhere in the flight envelope, and every extra
+    degree just makes the pitch loop easier to over-drive.
+
+  PITCH SIGN (this is the one that bites)
+    The elevon is AFT of the CG, so trailing-edge DOWN produces aft lift and
+    pitches the nose DOWN. A positive (nose-up) command therefore has to give a
+    NEGATIVE fcs/elevator-pos-rad, i.e. the aerosurface_scale range is
+    inverted. Cross-check: cmd +1 -> de = -0.349 rad ->
+    Cm = Cmde*de = (-0.309)*(-0.349) = +0.108 = nose up. Correct.
+    Paired with SERVO2_REVERSED 0 in Delta-38-catapult.parm.
+-->
+
+<system name="Aircraft control">
+
+  <!-- ══════════════════════════════════════════════════════════════════
+       MIXTURE - HARD-WIRED FULL RICH
+       This is a small carburetted two-stroke: there is no mixture control on
+       the aircraft, and the questionnaire never mentions one. So the FCS pins
+       fcs/mixture-pos-norm (what FGPiston reads) at 1.0 regardless of what, if
+       anything, drives fcs/mixture-cmd-norm.
+
+       THIS IS NOT COSMETIC - without it the engine does not run in SITL at all.
+       ArduPilot's JSBSim backend (libraries/SITL/SIM_JSBSim.cpp send_servos)
+       sends aileron, elevator, rudder and throttle, and nothing else: the
+       Geran-2 it was written against uses an <electric_engine>, which has no
+       mixture, no magneto and no starter. A real FGPiston with mixture left at
+       its default of 0 gets no fuel, so it produces no power (power-hp sits at
+       the -0.07 hp static-friction figure) and the propeller simply windmills
+       it down - measured in SITL: 4814 rpm at launch decaying to 0 rpm in 3.8 s
+       with fcs/throttle-cmd-norm at 1.0 and manifold pressure at 29.9 inHg the
+       whole time. The aircraft flew the catapult stroke and then glided into
+       the ground on every launch. Fixing it here rather than in the SITL
+       backend keeps the model self-sufficient in any harness (standalone
+       JSBSim, FlightGear, SITL).
+
+       The summer adds a bias of 1.0 and clips to [0,1], so the output is full
+       rich whether the command is 0 (nothing driving it) or 1 (a harness that
+       does set it).
+  ══════════════════════════════════════════════════════════════════ -->
+  <channel name="Mixture">
+    <summer name="Mixture Full Rich">
+      <input>fcs/mixture-cmd-norm</input>
+      <bias> 1.0 </bias>
+      <clipto> <min> 0 </min> <max> 1 </max> </clipto>
+      <output>fcs/mixture-pos-norm</output>
+    </summer>
+  </channel>
+
+  <channel name="Pitch">
+
+    <summer name="Pitch Trim Sum">
+      <input>fcs/elevator-cmd-norm</input>
+      <input>fcs/pitch-trim-cmd-norm</input>
+      <clipto> <min> -1 </min> <max> 1 </max> </clipto>
+      <!-- output is implicitly fcs/pitch-trim-sum -->
+    </summer>
+
+    <aerosurface_scale name="Elevator Control">
+      <input>fcs/pitch-trim-sum</input>
+      <range>
+        <min>  0.3491 </min>   <!-- cmd -1 -> +20 deg (TE down = nose down) -->
+        <max> -0.3491 </max>   <!-- cmd +1 -> -20 deg (TE up   = nose up)   -->
+      </range>
+      <output>fcs/elevator-pos-rad</output>
+    </aerosurface_scale>
+
+    <aerosurface_scale name="Elevator Normalization">
+      <input>fcs/elevator-pos-rad</input>
+      <domain> <min> -0.3491 </min> <max> 0.3491 </max> </domain>
+      <range>  <min> -1      </min> <max> 1      </max> </range>
+      <output>fcs/elevator-pos-norm</output>
+    </aerosurface_scale>
+
+  </channel>
+
+  <channel name="Roll">
+
+    <summer name="Roll Trim Sum">
+      <input>fcs/aileron-cmd-norm</input>
+      <input>fcs/roll-trim-cmd-norm</input>
+      <clipto> <min> -1 </min> <max> 1 </max> </clipto>
+      <!-- output is implicitly fcs/roll-trim-sum -->
+    </summer>
+
+    <aerosurface_scale name="Aileron Differential Elevon Control">
+      <input>fcs/roll-trim-sum</input>
+      <range>
+        <min> -0.2618 </min>   <!-- -15 deg -->
+        <max>  0.2618 </max>   <!-- +15 deg: left TE down => roll right -->
+      </range>
+      <output>fcs/aileron-pos-rad</output>
+    </aerosurface_scale>
+
+    <aerosurface_scale name="Aileron Normalization">
+      <input>fcs/aileron-pos-rad</input>
+      <domain> <min> -0.2618 </min> <max> 0.2618 </max> </domain>
+      <range>  <min> -1      </min> <max> 1      </max> </range>
+      <output>fcs/aileron-pos-norm</output>
+    </aerosurface_scale>
+
+  </channel>
+
+  <channel name="Elevon Mixer">
+
+    <summer name="Left Elevon Sum">
+      <input>fcs/elevator-pos-rad</input>
+      <input>fcs/aileron-pos-rad</input>
+      <clipto> <min> -0.4363 </min> <max> 0.4363 </max> </clipto>
+      <output>fcs/left-elevon-pos-rad</output>
+    </summer>
+
+    <aerosurface_scale name="Left Elevon Normalization">
+      <input>fcs/left-elevon-pos-rad</input>
+      <domain> <min> -0.4363 </min> <max> 0.4363 </max> </domain>
+      <range>  <min> -1      </min> <max> 1      </max> </range>
+      <output>fcs/left-elevon-pos-norm</output>
+    </aerosurface_scale>
+
+    <pure_gain name="Roll Negated for Right Elevon">
+      <input>fcs/aileron-pos-rad</input>
+      <gain> -1.0 </gain>
+      <output>fcs/roll-negated-for-right</output>
+    </pure_gain>
+
+    <summer name="Right Elevon Sum">
+      <input>fcs/elevator-pos-rad</input>
+      <input>fcs/roll-negated-for-right</input>
+      <clipto> <min> -0.4363 </min> <max> 0.4363 </max> </clipto>
+      <output>fcs/right-elevon-pos-rad</output>
+    </summer>
+
+    <aerosurface_scale name="Right Elevon Normalization">
+      <input>fcs/right-elevon-pos-rad</input>
+      <domain> <min> -0.4363 </min> <max> 0.4363 </max> </domain>
+      <range>  <min> -1      </min> <max> 1      </max> </range>
+      <output>fcs/right-elevon-pos-norm</output>
+    </aerosurface_scale>
+
+  </channel>
+
+</system>

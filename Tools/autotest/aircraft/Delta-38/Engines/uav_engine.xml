@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Delta-38 powerplant  [Q 4.2 name = "uav_engine"]
+  70 cm3, 2-cylinder, 2-stroke gasoline, direct drive to a 20" pusher prop.
+
+  QUESTIONNAIRE VALUES, used as given:
+    maxhp        [Q 5.1] 5.22 kW = 7.00 hp
+    maxrpm       [Q 5.2] 6300
+    idlerpm      [Q 5.3] 3000
+    displacement [Q 5.4] 70 cm3 = 4.272 in3 (TOTAL swept volume)
+    cycles       [Q 5.5] 2 - two-stroke, every revolution is a power stroke
+    cylinders    [Q 5.6] 2
+    compression  [Q 5.7] answered "0" (unknown) -> 9.0:1, typical for a
+                 gasoline model two-stroke. Only trims fuel consumption.
+    boost        [Q 5.9] none: no <boostspeeds> element at all.
+    bore/stroke  derived from displacement and cylinder count: 35 cm3/cyl,
+                 bore 1.45 in -> piston area 1.651 in2 -> stroke 1.294 in.
+                 A normal square-ish small two-stroke. (Aeromatic emitted
+                 5.125 x 4.375 in, 1 cylinder, 4 cycles, 2800 rpm - i.e. a
+                 6-litre certified aero engine. All of it discarded.)
+
+  ==========================================================================
+  CALIBRATION - MEASURED, NOT GUESSED
+  ==========================================================================
+  Both settings below were established by running this model in standalone
+  JSBSim and reading engine-rpm / power-hp / thrust-lbs / fuel-flow-rate-gph
+  directly. The results are reproducible with scripts/d38_cruise.xml.
+
+  1. NO <bsfc> ELEMENT (deliberate).
+     Aeromatic's own template warns that "defining <bsfc> over-rides the
+     built-in horsepower calculations", and that is exactly what happens:
+     with <bsfc>0.745</bsfc> FGPiston derives power from its internal air/fuel
+     flow instead of from <maxhp>, and this engine then produced
+         1.06 hp static / 45 N of thrust  (should be ~7 hp / ~160 N)
+     and the aircraft could not hold altitude. Removing the element lets
+     FGPiston use the maxhp/maxrpm power curve, which gives
+         MEASURED: 6.95 hp at 6353 rpm full throttle, 157 N static thrust
+     i.e. the rated 5.22 kW within 1%.  <== this is the fix that made the
+     aircraft flyable, and it is very likely the same root cause behind the
+     Geran-2's abandoned piston model (see ../Geran-2/Engines/MD550.xml,
+     which was replaced by an <electric_engine> after "never reaching a
+     self-sustaining RPM"). This model keeps a real FGPiston, so fuel burn,
+     endurance and range are simulated for real.
+
+  2. <volumetric-efficiency> 1.85 is a FUEL-FLOW calibration constant here,
+     not a physical VE.
+     With bsfc removed, FGPiston's power comes from maxhp but its FUEL FLOW
+     still comes from its internal air-mass-flow model - and that model is
+     built around a four-stroke induction cycle. For this two-stroke it
+     under-reads by roughly 2.4x: at the measured cruise point (3.55 hp) the
+     physical VE of 0.78 gave 0.94 L/h, an implied bsfc of 0.40 lb/hp/hr,
+     which would be better than a large diesel and is not physical for a
+     carburetted model two-stroke (those run 0.9-1.1 lb/hp/hr).
+     [Q 5.8a] gives the ground truth: 2.0-2.5 L/h at cruise. Scaling VE by
+     2.4 to 1.85 reproduces it:
+         MEASURED at the cruise point (78-80% throttle, ~5300-5660 rpm,
+         thrust 62-74 N = airframe drag at 34-36 m/s):  2.2-2.7 L/h
+         MEASURED at full throttle:                     3.7 L/h
+     Cross-check against the questionnaire's own endurance claim:
+         5.5 L [Q 4.13] / 2.3 L/h = 2.4 h at ~122 km/h = ~290 km,
+     versus the stated 250+ km. Consistent.
+     VE does NOT affect power (verified: 6.94 hp at VE 0.78 vs 6.95 hp at
+     VE 1.85), so this knob only moves fuel burn.
+
+  3. <minmp> 8.0 inHg rather than the 5.0 first tried: at 5.0 the closed-
+     throttle pumping loss was large enough that a windmilling prop plus
+     negative engine power roughly doubled airframe drag in a descent.
+
+  SANITY CHECK of the air flow the displacement implies:
+    4.272 in3 * 6300 rpm (2-stroke, one charge per rev) = 26,900 in3/min
+    = 0.0073 m3/s = 0.0090 kg/s of air; at stoichiometric that is 2.2 kg/h of
+    fuel = 26 kW of chemical power, so ~5.2 kW of shaft power is 20% thermal
+    efficiency - correct for a small two-stroke. The geometry is therefore
+    self-consistent; only JSBSim's induction bookkeeping needed the scaling.
+
+  KNOWN LIMIT: the engine quits (set-running goes to 0) if the propeller drags
+  it below roughly 1000 rpm, and ArduPilot never commands a restart, so a
+  near-stop in flight is unrecoverable. Verified NOT to happen in normal
+  operation: at closed throttle and 25-58 m/s the prop windmills the engine at
+  3300-3500 rpm and full power comes straight back when the throttle returns.
+-->
+<piston_engine name="uav_engine">
+  <minmp unit="INHG">          8.0 </minmp>
+  <maxmp unit="INHG">         29.2 </maxmp>   <!-- unsupercharged, sea level -->
+  <displacement unit="IN3">  4.272 </displacement>
+  <maxhp>                     7.00 </maxhp>
+  <cycles>                       2 </cycles>
+  <idlerpm>                   3000 </idlerpm>
+  <maxrpm>                    6300 </maxrpm>
+  <sparkfaildrop>              0.1 </sparkfaildrop>
+  <volumetric-efficiency>     1.85 </volumetric-efficiency>  <!-- fuel-flow calibration, see note 2 -->
+  <man-press-lag>             0.05 </man-press-lag>
+  <static-friction unit="HP">  0.07 </static-friction>
+  <starter-torque>             2.0 </starter-torque>
+  <starter-rpm>               1800 </starter-rpm>
+  <stroke unit="IN">         1.294 </stroke>
+  <bore   unit="IN">         1.450 </bore>
+  <cylinders>                    2 </cylinders>
+  <compression-ratio>          9.0 </compression-ratio>
+</piston_engine>

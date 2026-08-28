@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Delta-38 cruise / propulsion acceptance run (standalone JSBSim).
+
+    jsbsim [root=Tools/autotest]
+           [script=aircraft/Delta-38/scripts/d38_cruise.xml]
+           [logdirectivefile=aircraft/Delta-38/scripts/d38_log.xml]
+
+  Starts trimmed at 34 m/s / 300 m with the engine running, holds full
+  throttle for 20 s, then 60% for 20 s.  What to check in the CSV:
+    * engine rpm settles near the 6300 redline at full throttle and does NOT
+      decay to zero (the failure mode that killed the Geran-2's piston model),
+    * thrust ~= 90 N at 34 m/s full throttle,
+    * fuel flow ~= 2-2.5 L/h equivalent at the cruise setting [Q 5.8a],
+    * altitude climbs at full throttle and roughly holds at 60%.
+  No autopilot is modelled here, so a slow pitch drift is expected.
+-->
+<runscript name="Delta-38 cruise/propulsion check">
+  <use aircraft="Delta-38" initialize="test_cruise_init"/>
+  <run start="0.0" end="40.0" dt="0.0025">
+
+    <event name="Engine start" persistent="false">
+      <condition> simulation/sim-time-sec ge 0.0 </condition>
+      <set name="fcs/throttle-cmd-norm[0]" value="1.0"/>
+      <set name="fcs/mixture-cmd-norm[0]" value="1.0"/>
+      <set name="propulsion/engine[0]/set-running" value="1"/>
+      <notify/>
+    </event>
+
+    <event name="Throttle to cruise" persistent="false">
+      <condition> simulation/sim-time-sec ge 20.0 </condition>
+      <set name="fcs/throttle-cmd-norm[0]" value="0.60"/>
+      <notify/>
+    </event>
+
+  </run>
+</runscript>

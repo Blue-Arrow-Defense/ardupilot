@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
+#include <stdlib.h>   // getenv/atof for the SITL_* launch overrides
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -88,6 +89,28 @@ JSBSim::JSBSim(const char *frame_str) :
 
     printf("JSBSim backend started: control_port=%u fdm_port=%u\n",
            control_port, fdm_port);
+}
+
+/*
+  catapult force magnitude in pounds-force.
+
+  The stroke is a fixed 0.4 s (see the Catapult Release event), so this is
+  simply m*dV/dt for the airframe's own mass and its own desired release
+  speed - it is NOT a universal constant. Overridden per airframe via
+  SITL_CATAPULT_LBF (set by docker/sim/entrypoint.sh from the airframe
+  registry in backend/app/models.py); the default is the Geran-2's value so
+  existing setups are unchanged.
+ */
+float JSBSim::catapult_lbf(void) const
+{
+    const char *env = getenv("SITL_CATAPULT_LBF");
+    if (env != nullptr) {
+        const float v = atof(env);
+        if (v > 0) {
+            return v;
+        }
+    }
+    return 4900.0f;
 }
 
 /*
@@ -236,7 +259,12 @@ bool JSBSim::create_templates(void)
 "           ~4900*4.4482*0.9659*0.4/200 ~= 42 m/s (minus stroke losses,\n"
 "           ~40 m/s at release) so the wing is genuinely flying the\n"
 "           instant it leaves the rail. -->\n"
-"      <set name=\"external_reactions/catapult/magnitude\" value=\"4900\"/>\n"
+"           The magnitude is PER-AIRFRAME (SITL_CATAPULT_LBF, default 4900\n"
+"           for the Geran-2): it must scale with mass, and a second, much\n"
+"           lighter airframe makes that obvious - 4900 lbf on the 34 kg\n"
+"           Delta-38 would be a 65 g, 250 m/s launch. See\n"
+"           aircraft/Delta-38/Delta-38.xml for that airframe's own sizing. -->\n"
+"      <set name=\"external_reactions/catapult/magnitude\" value=\"%.1f\"/>\n"
 "      <set name=\"forces/hold-down\" value=\"0\"/>\n"
 "      <notify/>\n"
 "    </event>\n"
@@ -246,7 +274,7 @@ bool JSBSim::create_templates(void)
 "      <delay> 0.4 </delay>\n"
 "      <set name=\"external_reactions/catapult/magnitude\" value=\"0\"/>\n"
 "      <notify/>\n"
-"    </event>\n");
+"    </event>\n", catapult_lbf());
     }
 
     // The generic "start engine" event below just forces set-running=1,
@@ -637,11 +665,24 @@ void JSBSim::send_servos(const struct sitl_input &input)
     // mid-air right after the catapult releases it. Rather than a fixed
     // timer (which either cuts off too early if detection is slow, or
     // needlessly overrides once ArduPilot is already commanding real
-    // throttle), keep forcing full throttle for as long as ArduPilot's
-    // own commanded throttle is still near zero - the moment it starts
-    // commanding real throttle (launch confirmed), hand control back
+    // throttle), keep forcing full throttle until ArduPilot is itself
+    // commanding (nearly) full throttle, then hand control back
     // immediately. A generous hard cap guards against never handing
     // back control if something else is wrong.
+    //
+    // The threshold is 95%, not "anything above zero". A catapult launch
+    // is committed at full power on the rail, and ArduPilot's own throttle
+    // does not step straight to 100 on arming - measured in SITL, TECS
+    // ramps it up over roughly half a second while it acquires its speed
+    // and height errors. Handing back at the first non-zero value therefore
+    // fed the engine ~50% throttle in the middle of the catapult stroke.
+    // An <electric_engine> shrugs that off (power is PowerWatts*throttle,
+    // instantaneous), but a real FGPiston loses rpm and manifold pressure
+    // and needs a second or more to spin the propeller back up - so the
+    // aircraft left the rail slow and with almost no thrust, decelerated
+    // and mushed into the ground. Waiting for ArduPilot to ask for full
+    // throttle costs nothing on a takeoff (it wants THR_MAX anyway) and
+    // keeps the engine at its rated power right through the launch.
     char throttle_cmd[48];
     bool force_full_throttle = false;
     if (catapult_launch) {
@@ -651,7 +692,7 @@ void JSBSim::send_servos(const struct sitl_input &input)
         const bool within_hard_cap = catapult_armed_at_ms != 0 &&
             AP_HAL::millis() - catapult_armed_at_ms < 10000;
         force_full_throttle = !armed ||
-            (within_hard_cap && throttle < 0.05f);
+            (within_hard_cap && throttle < 0.95f);
     }
     if (force_full_throttle) {
         throttle_cmd[0] = '\0';

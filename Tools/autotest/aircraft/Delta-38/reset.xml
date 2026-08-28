@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<!-- Placeholder initial conditions.
+     ArduPilot's JSBSim SITL backend REWRITES this file on every boot from the
+     home location it was given (see JSBSim::create_templates in
+     libraries/SITL/SIM_JSBSim.cpp): 15 m and 5 deg nose-up on the catapult
+     rail, or SITL_AIR_START_ALT for the "-air" frame. The values here are only
+     used when the model is run through standalone JSBSim. -->
+<initialize name="Start up location">
+  <latitude unit="DEG" type="geodetic"> 50.394647 </latitude>
+  <longitude unit="DEG"> 30.057683 </longitude>
+  <altitude unit="M"> 15.0 </altitude>
+  <vt unit="FT/SEC"> 0.0 </vt>
+  <gamma unit="DEG"> 0.0 </gamma>
+  <phi unit="DEG"> 0.0 </phi>
+  <theta unit="DEG"> 5.0 </theta>
+  <psi unit="DEG"> 0.0 </psi>
+  <running> -1 </running>
+</initialize>

@@ -97,6 +97,8 @@ private:
     } frame;
 
     bool create_templates(void);
+    // catapult force magnitude (lbf); per-airframe via SITL_CATAPULT_LBF
+    float catapult_lbf(void) const;
     bool start_JSBSim(void);
     bool open_control_socket(void);
     bool open_fdm_socket(void);

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Delta-38 catapult launch run (standalone JSBSim).
+
+  Reproduces the SITL launch sequence WITHOUT forces/hold-down, because the
+  standalone drivers (both the FlightGear JSBSim binary and the jsbsim Python
+  CLI) treat a held-down FDM as "not running" and stop the loop immediately.
+  ArduPilot's SITL backend drives JSBSim through its console socket instead
+  ("iterate 1") and is unaffected, so hold-down is used there and works.
+
+  Here the aircraft simply rests on its belly contacts at 15 m for 2 s, then:
+    t = 2.0 s  catapult fires, 660 lbf along +X body [see Delta-38.xml]
+    t = 2.4 s  release
+    t > 2.4 s  free flight with a fixed nose-up elevon (no autopilot)
+
+  Acceptance: release speed >= 33 m/s, minimum ground clearance stays well
+  above 0, and the aircraft ends up climbing rather than sinking.
+-->
+<runscript name="Delta-38 catapult launch">
+  <use aircraft="Delta-38" initialize="test_rail_init"/>
+  <run start="0.0" end="20.0" dt="0.0025">
+
+    <event name="Engine start" persistent="false">
+      <condition> simulation/sim-time-sec ge 0.0 </condition>
+      <set name="fcs/throttle-cmd-norm[0]" value="1.0"/>
+      <set name="fcs/mixture-cmd-norm[0]" value="1.0"/>
+      <set name="propulsion/engine[0]/set-running" value="1"/>
+      <notify/>
+    </event>
+
+    <event name="Catapult Fire" persistent="false">
+      <condition> simulation/sim-time-sec ge 2.0 </condition>
+      <set name="external_reactions/catapult/magnitude" value="660"/>
+      <notify/>
+    </event>
+
+    <event name="Catapult Release" persistent="false">
+      <condition> simulation/sim-time-sec ge 2.4 </condition>
+      <set name="external_reactions/catapult/magnitude" value="0"/>
+      <notify/>
+    </event>
+
+    <event name="Hold a climb attitude" persistent="false">
+      <condition> simulation/sim-time-sec ge 2.4 </condition>
+      <set name="fcs/elevator-cmd-norm" value="0.12"/>
+      <notify/>
+    </event>
+
+  </run>
+</runscript>

@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<!-- CSV log directive for the standalone acceptance runs above.
+     Pass with the logdirectivefile option; writes d38_out.csv into the CWD. -->
+<output name="d38_out.csv" type="CSV" rate="40">
+  <property caption="alt_m_agl">position/h-agl-ft</property>
+  <property caption="vt_fps">velocities/vt-fps</property>
+  <property caption="alpha_deg">aero/alpha-deg</property>
+  <property caption="theta_deg">attitude/theta-deg</property>
+  <property caption="phi_deg">attitude/phi-deg</property>
+  <property caption="gamma_deg">flight-path/gamma-deg</property>
+  <property caption="rpm">propulsion/engine[0]/engine-rpm</property>
+  <property caption="hp">propulsion/engine[0]/power-hp</property>
+  <property caption="thrust_lbs">propulsion/engine[0]/thruster/thrust-lbs</property>
+  <property caption="fuelflow_pps">propulsion/engine[0]/fuel-flow-rate-pps</property>
+  <property caption="CL">aero/cl-squared</property>
+  <property caption="elev_rad">fcs/elevator-pos-rad</property>
+  <property caption="qbar_psf">aero/qbar-psf</property>
+  <property caption="climb_fps">velocities/h-dot-fps</property>
+</output>

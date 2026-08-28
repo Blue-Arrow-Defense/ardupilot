@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!-- Standalone-JSBSim test IC: on the catapult rail, 15 m, 5 deg nose-up,
+     at rest. Mirrors what SIM_JSBSim.cpp writes into reset.xml for the
+     "-catapult" frame, so the standalone launch test and SITL see the same
+     starting state. Not used by SITL (it regenerates reset.xml). -->
+<initialize name="rail">
+  <latitude unit="DEG" type="geodetic"> 50.394647 </latitude>
+  <longitude unit="DEG"> 30.057683 </longitude>
+  <altitude unit="M"> 15.0 </altitude>
+  <vt unit="FT/SEC"> 0.0 </vt>
+  <gamma unit="DEG"> 0.0 </gamma>
+  <phi unit="DEG"> 0.0 </phi>
+  <theta unit="DEG"> 5.0 </theta>
+  <psi unit="DEG"> 0.0 </psi>
+  <running> -1 </running>
+</initialize>

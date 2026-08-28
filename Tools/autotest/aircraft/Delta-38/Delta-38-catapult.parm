@@ -1,0 +1,119 @@
+# ArduPlane defaults for the catapult-launched Delta-38.
+#
+# Loaded AFTER Tools/autotest/default_params/plane-jsbsim.parm (see
+# Tools/autotest/pysim/vehicleinfo.py), so everything here overrides it.
+# The base file is tuned for the Rascal trainer: AIRSPEED_CRUISE 22,
+# AIRSPEED_MIN 10, ROLL_LIMIT_DEG 65 - all wrong for this airframe.
+
+# ---------------------------------------------------------------- airspeeds
+# Measured from the FDM (standalone JSBSim, scripts/d38_cruise.xml):
+#   stall            23.2 m/s at the typical 34.4 kg all-up
+#                    (24.4 m/s at the 38 kg MTOW, = the 88 km/h in Q 3.1)
+#   min power        ~30 m/s
+#   level cruise     34 m/s at ~72% throttle, ~2.2 L/h  [matches Q 5.8a]
+#   best climb       +4.9 m/s at 31 m/s, +4.7 m/s at 34 m/s, full throttle
+#   idle glide       -5.5 m/s at 34 m/s (L/D ~5.4, windmilling prop)
+#   max level speed  ~40 m/s / 145 km/h at full throttle
+# Wing loading is 19.6 kg/m2 - much lighter than the Geran-2's 42 - so this
+# airframe genuinely flies slower, and telling TECS to hold 45 m/s (the
+# Geran-2 value) would peg it at full throttle for the whole mission.
+AIRSPEED_MIN    27
+AIRSPEED_CRUISE 34
+AIRSPEED_MAX    44
+# Cruise-ish trim throttle: measured 72% holds 34 m/s level. THR_MAX stays at
+# 100 from the base file so the climb-out is not throttle limited.
+TRIM_THROTTLE   72
+
+# The catapult releases at ~35.7 m/s measured (SITL_CATAPULT_LBF=660, 0.4 s
+# stroke), already well above stall, so rotation to the climb schedule should
+# trigger the instant it leaves the rail. 26 is past the 23.2 m/s stall and
+# comfortably below release.
+TKOFF_ROTATE_SPD 26.0
+
+# ------------------------------------------------------------------- TECS
+# TECS's whole job is bookkeeping the aircraft's total energy, so both of these
+# have to be the airframe's REAL numbers or every correction is scaled wrongly.
+# Both measured in standalone JSBSim (scripts/d38_cruise.xml):
+#   climb at THR_MAX and AIRSPEED_CRUISE (34 m/s):  +4.70 m/s
+#   sink  at THR_MIN and AIRSPEED_CRUISE (34 m/s):  -5.5 m/s
+# The stock SINK_MIN of 2.0 is the one that bites: this is a draggy
+# low-aspect-ratio delta and its idle glide with a windmilling propeller is
+# only L/D ~5.4, i.e. it sinks nearly 3x faster than the default claims. TECS
+# therefore believed closing the throttle cost almost no energy and kept
+# over-correcting - measured as a self-sustaining ~10 s limit cycle in cruise
+# (+/-12 m of altitude, 32-36 m/s, throttle slamming between 50 and 100%).
+# Giving TECS the true figures is what settles it; the damping terms below are
+# then only a modest trim.
+TECS_CLMB_MAX   4.5
+TECS_SINK_MIN   5.5
+
+TECS_TIME_CONST 6.0
+TECS_THR_DAMP   0.7
+TECS_PTCH_DAMP  0.4
+TECS_INTEG_GAIN 0.20
+
+# ------------------------------------------------------------ lateral limits
+# AR is 1.61 and the span only 1.68 m, so full elevon deflection produces a
+# very high roll rate (>300 deg/s) and the base file's 65 deg bank limit is an
+# aerobatic manoeuvre for this airframe - the same over-banked spiral trap
+# documented for the Geran-2. Cap the bank and lengthen L1 so heading capture
+# does not slam into the limit.
+ROLL_LIMIT_DEG  35
+NAVL1_PERIOD    18
+
+# --------------------------------------------------------------- throttle
+# THE fix for "launches at the right speed, then sinks into the ground".
+# Measured in SITL: with the default 100 %/s slew ArduPlane ramps the throttle
+# from 0 to 100 % over ~1.3 s starting at arm — i.e. across the whole catapult
+# stroke and the first second of flight. SIM_JSBSim.cpp only holds full
+# throttle while ArduPilot's own command is below 5 %, so as soon as the ramp
+# passes 5 % the real engine gets 20 %, then 44 %... The Geran-2 shrugs this off
+# (it uses an <electric_engine>: power is PowerWatts*throttle, instantaneous).
+# A real FGPiston cannot: rpm and manifold pressure collapse, and spinning the
+# 0.0196 kg*m2 propeller back up to 6300 rpm on ~8 N*m takes ~1.6 s. Measured
+# result was release at 33 m/s instead of 35.7, then no acceleration at all,
+# a sustained lift deficit and ground contact 2.6 s later.
+# A catapult launch is committed at full power on the rail, so there is no
+# reason for a slew limit here at all.
+TKOFF_THR_SLEW -1
+THR_SLEWRATE    0
+
+# ------------------------------------------------------------- pitch response
+# Only the parameters that exist in ArduPlane 4.6: the rate loop is
+# PTCH_RATE_*/RLL_RATE_* (the old PTCH2SRV_P/I/D names were removed in 4.1 and
+# are silently ignored, which is a good way to think you have retuned something
+# and have not).
+#
+# The base file's PTCH2SRV_TCONST of 0.25 is kept close: this airframe has a
+# thin static margin (~9 % MAC) but a well-damped short period (Cmq -3.0 —
+# verified, an elevator pulse settles in under 1 s with no overshoot), so it
+# does not need a sluggish outer loop. A slower 0.75 was tried first and is the
+# wrong direction: it demands a small pitch rate, the rate loop's feed-forward
+# then asks for only ~17 % of elevon travel, and 17 % is not enough to rotate
+# out of the post-launch mush (measured: nav_pitch 15 deg demanded, -6 deg
+# achieved, servo2 stuck at 1584 of a 1500-2000 range).
+PTCH2SRV_TCONST 0.35
+PTCH2SRV_RMAX_UP 45
+PTCH2SRV_RMAX_DN 45
+RLL2SRV_TCONST  0.35
+RLL2SRV_RMAX    60
+
+# The base plane-jsbsim.parm sets SERVO2_REVERSED=1 for a different reference
+# airframe. Systems/Aircraft control.xml already inverts the elevon pitch
+# scale (an aft elevon needs TE-up for nose-up), so reversing the servo as
+# well would reverse the pitch loop - the exact failure the Geran-2 file
+# documents (elevator saturates fighting itself).
+SERVO2_REVERSED 0
+
+# Bit 2 (value 4) = DISABLE_TOFF_ATTITUDE_CHK. auto_takeoff_check()
+# (ArduPlane/takeoff.cpp) otherwise requires pitch/roll inside bounds for its
+# whole confirmation window before handing off to real TECS/attitude control,
+# and until then the aircraft coasts on a fixed pre-launch surface output. A
+# catapult provides a known-good launch the instant it fires, and the
+# propeller's own torque reaction rolls this light airframe ~9 deg during the
+# 0.4 s stroke (Ixx is only 1.85 kg*m2 against ~8 N*m of shaft torque), which
+# is exactly the kind of transient that can make the attitude gate fail
+# repeatedly and never confirm the launch.
+FLIGHT_OPTIONS 4
+
+ARMING_CHECK 0
